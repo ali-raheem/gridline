@@ -104,3 +104,7 @@ impl Cell {
 
 /// Thread-safe sparse grid storage.
 pub type Grid = DashMap<CellRef, Cell>;
+
+/// Thread-safe storage for spill cell values.
+/// Maps cell positions to their computed Dynamic values.
+pub type SpillMap = DashMap<CellRef, rhai::Dynamic>;

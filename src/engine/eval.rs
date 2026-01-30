@@ -1,12 +1,18 @@
 use rhai::Engine;
 use std::sync::Arc;
 
-use super::{AST, Dynamic, Grid};
+use super::{AST, Dynamic, Grid, SpillMap};
 
 /// Create a Rhai engine with built-ins registered.
 pub fn create_engine(grid: Arc<Grid>) -> Engine {
+    let spill_map = Arc::new(SpillMap::new());
+    create_engine_with_spill(grid, spill_map)
+}
+
+/// Create a Rhai engine with built-ins registered and a shared spill map.
+pub fn create_engine_with_spill(grid: Arc<Grid>, spill_map: Arc<SpillMap>) -> Engine {
     let mut engine = Engine::new();
-    crate::builtins::register_builtins(&mut engine, grid);
+    crate::builtins::register_builtins(&mut engine, grid, spill_map);
     engine
 }
 
@@ -17,7 +23,18 @@ pub fn create_engine_with_functions(
     grid: Arc<Grid>,
     custom_script: Option<&str>,
 ) -> (Engine, Option<AST>, Option<String>) {
-    let engine = create_engine(grid);
+    let spill_map = Arc::new(SpillMap::new());
+    create_engine_with_functions_and_spill(grid, spill_map, custom_script)
+}
+
+/// Create a Rhai engine with built-ins, custom functions, and a shared spill map.
+/// Returns the engine, compiled AST (if any), and any error message.
+pub fn create_engine_with_functions_and_spill(
+    grid: Arc<Grid>,
+    spill_map: Arc<SpillMap>,
+    custom_script: Option<&str>,
+) -> (Engine, Option<AST>, Option<String>) {
+    let engine = create_engine_with_spill(grid, spill_map);
 
     let (ast, error) = if let Some(script) = custom_script {
         match engine.compile(script) {

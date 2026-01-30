@@ -2,6 +2,7 @@
 
 mod actions;
 mod app;
+mod help;
 mod input;
 mod keymap;
 mod ui;

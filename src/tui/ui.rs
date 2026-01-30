@@ -38,8 +38,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_grid(f, app, chunks[1]);
     draw_status_bar(f, app, chunks[2]);
 
-    if let Some(spec) = app.plot_modal.as_ref() {
-        draw_plot_modal(f, app, spec);
+    if let Some(spec) = app.plot_modal.clone() {
+        draw_plot_modal(f, app, &spec);
     }
 }
 
@@ -87,7 +87,7 @@ fn draw_formula_bar(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_grid(f: &mut Frame, app: &App, area: Rect) {
+fn draw_grid(f: &mut Frame, app: &mut App, area: Rect) {
     // Build header row
     let mut header_cells = vec![Cell::from(" ")]; // Corner
     for col in app.viewport_col..app.viewport_col + app.visible_cols {
@@ -216,7 +216,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-fn draw_plot_modal(f: &mut Frame, app: &App, spec: &PlotSpec) {
+fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
     let area = centered_rect(80, 70, f.area());
     let inner_width = area.width.saturating_sub(2);
     let inner_height = area.height.saturating_sub(2);
@@ -275,12 +275,12 @@ fn draw_plot_modal(f: &mut Frame, app: &App, spec: &PlotSpec) {
     f.render_widget(paragraph, area);
 }
 
-fn parse_cell_as_f64_or_zero(app: &App, r: usize, c: usize) -> f64 {
+fn parse_cell_as_f64_or_zero(app: &mut App, r: usize, c: usize) -> f64 {
     let s = app.get_cell_display(&CellRef::new(r, c));
     s.parse::<f64>().unwrap_or(0.0)
 }
 
-fn render_plot_frame(app: &App, spec: &PlotSpec, width: u32, height: u32) -> String {
+fn render_plot_frame(app: &mut App, spec: &PlotSpec, width: u32, height: u32) -> String {
     let r1 = spec.r1.min(spec.r2);
     let r2 = spec.r1.max(spec.r2);
     let c1 = spec.c1.min(spec.c2);

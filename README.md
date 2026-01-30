@@ -18,11 +18,11 @@
   <a href="https://github.com/ratatui/ratatui"><img alt="ratatui" src="https://img.shields.io/badge/TUI-ratatui-1f2937" /></a>
 </p>
 
-# Gridline
+# Gridline ✨
 
-Gridline is a proof-of-concept terminal spreadsheet. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). You can keep your spreadsheet data in a plain text file and your reusable logic in a separate `.rhai` functions file.
+Gridline is a proof-of-concept terminal spreadsheet. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). Your sheet lives in a plain text file, and your reusable logic can live in a separate `.rhai` functions file.
 
-What you get:
+What you get (today):
 - TUI grid with a formula bar and command mode
 - A1-style references in formulas (`=A1 + B2`) and range functions (`=SUM(A1:B5)`)
 - Dependency tracking and recalculation
@@ -33,7 +33,12 @@ What you get:
 
 Project status: this is a POC. Expect rough edges (especially around plotting and any non-trivial spreadsheet ergonomics).
 
-## Quick Start
+Why it's fun:
+- 🧾 Plain-text sheets you can diff and version
+- 🧠 Formulas are real Rhai scripts (with spreadsheet sugar)
+- 📈 Quick plots right in the terminal
+
+## Quick Start 🚀
 
 Build and run:
 
@@ -59,7 +64,7 @@ Reload / load functions at runtime:
 :source examples/functions.rhai
 ```
 
-## Cell Input Rules
+## Cell Input Rules 🧾
 
 Gridline interprets cell input like this:
 - empty / whitespace => empty cell
@@ -76,12 +81,22 @@ A3: =A1 * 2
 A4: =SUM(A1:A3)
 ```
 
-## Formulas (Rhai + Spreadsheet Sugar)
+## Formulas (Rhai + Spreadsheet Sugar) 🧠
 
 Inside formulas:
 - `A1` becomes `cell(0, 0)` (0-indexed internally)
 - `@A1` becomes `value(0, 0)` (typed access: numbers/text/bools)
 - `SUM(A1:B5)` becomes `sum_range(0, 0, 4, 1)`
+
+Arrays "spill" down the column.
+If you need to do an in-place operation that returns `()` (like Rhai's `Array.sort()`), use `OUTPUT`:
+
+```text
+A1: 30
+A2: 10
+A3: 20
+B1: =OUTPUT(VEC(A1:A3), |v| { v.sort(); v })
+```
 
 Typed refs are useful when a referenced cell contains text (or a formula that returns text):
 
@@ -93,8 +108,9 @@ A1: =len(@B1)
 Built-in range functions (ALL CAPS):
 - `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`
 - `BARCHART`, `LINECHART`, `SCATTER`
+- `VEC` (convert a range to an array)
 
-### Custom Functions Example
+### Custom Functions Example 🧩
 
 Create a `.rhai` file:
 
@@ -112,7 +128,7 @@ B1: 10
 C1: =fib(B1)
 ```
 
-## Plotting
+## Plotting 📈
 
 Plotting works by making a formula cell return a tagged plot spec. The grid shows a placeholder (e.g. `<BAR>`), and you can open the plot modal.
 
@@ -127,7 +143,7 @@ Open the plot modal:
 - Vim keymap: `P`
 - Emacs keymap: `M-p`
 
-## Commands
+## Commands ⌨️
 
 Command mode:
 - Vim: `:`
@@ -144,7 +160,7 @@ Useful commands:
 - `:colwidth A 15` set a specific column width
 - `:source <file.rhai>` (alias `:so`) load functions; `:so` reloads the last functions file
 
-## Keymaps
+## Keymaps 🗺️
 
 Select keybindings:
 
@@ -165,7 +181,7 @@ Emacs:
 - `C-SPC` set mark (visual), `M-w` copy, `C-y` paste
 - `C-s` save
 
-## File Format
+## File Format 📝
 
 Gridline files are plain text. Non-empty, non-comment lines look like:
 
@@ -175,7 +191,7 @@ CELLREF: VALUE
 
 Comments start with `#`. Values follow the same input rules as interactive editing.
 
-## Development
+## Development 🔧
 
 ```bash
 cargo fmt
@@ -183,7 +199,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-## License
+## License 📜
 
 Licensed under either of:
 - Apache License, Version 2.0 (`LICENSE-APACHE`)

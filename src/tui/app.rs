@@ -1,13 +1,14 @@
 //! Application state and logic
 
 use crate::error::Result;
-use crate::storage::{parse_grd, write_grd};
+use crate::storage::{parse_csv, parse_grd, write_csv, write_grd};
 use gridline_engine::engine::{
-    AST, Cell, CellRef, CellType, Grid, create_engine_with_functions, detect_cycle,
-    eval_with_functions, format_dynamic, format_number, preprocess_script,
+    AST, Cell, CellRef, CellType, Grid, ShiftOperation, SpillMap,
+    create_engine_with_functions_and_spill, detect_cycle, eval_with_functions, format_dynamic,
+    format_number, preprocess_script, shift_formula_references,
 };
 use gridline_engine::plot::{PlotSpec, parse_plot_spec};
-use rhai::Engine;
+use rhai::{Dynamic, Engine};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
@@ -108,15 +109,26 @@ pub struct App {
     /// Plot modal state (when open)
     pub plot_modal: Option<PlotSpec>,
 
+    /// Help modal state
+    pub help_modal: bool,
+
     /// Active keymap
     pub keymap: Keymap,
+
+    /// Maps spill cell positions to their source cell
+    pub spill_sources: HashMap<CellRef, CellRef>,
+
+    /// Shared spill map for computed spill values (accessible by engine builtins)
+    pub spill_map: Arc<SpillMap>,
 }
 
 impl App {
     /// Create a new application
     pub fn new() -> Self {
         let grid = Arc::new(Grid::new());
-        let (engine, _, _) = create_engine_with_functions(Arc::clone(&grid), None);
+        let spill_map = Arc::new(SpillMap::new());
+        let (engine, _, _) =
+            create_engine_with_functions_and_spill(Arc::clone(&grid), Arc::clone(&spill_map), None);
 
         App {
             grid,
@@ -147,7 +159,10 @@ impl App {
             custom_ast: None,
             dependents: HashMap::new(),
             plot_modal: None,
+            help_modal: false,
             keymap: Keymap::Vim,
+            spill_sources: HashMap::new(),
+            spill_map,
         }
     }
 
@@ -216,8 +231,11 @@ impl App {
 
     /// Recreate the Rhai engine with current grid and custom functions
     fn recreate_engine(&mut self) {
-        let (engine, ast, error) =
-            create_engine_with_functions(Arc::clone(&self.grid), self.custom_functions.as_deref());
+        let (engine, ast, error) = create_engine_with_functions_and_spill(
+            Arc::clone(&self.grid),
+            Arc::clone(&self.spill_map),
+            self.custom_functions.as_deref(),
+        );
         self.engine = engine;
         self.custom_ast = ast;
         if let Some(err) = error {
@@ -245,6 +263,7 @@ impl App {
     fn mark_dependents_dirty(&mut self, changed_cell: &CellRef) {
         let mut to_process = vec![changed_cell.clone()];
         let mut visited = HashSet::new();
+        let mut spills_to_clear = Vec::new();
 
         while let Some(cell_ref) = to_process.pop() {
             if !visited.insert(cell_ref.clone()) {
@@ -253,14 +272,23 @@ impl App {
 
             // Mark all cells that depend on this one as dirty
             if let Some(deps) = self.dependents.get(&cell_ref) {
-                for dep in deps {
-                    if let Some(mut cell) = self.grid.get_mut(dep) {
+                for dep in deps.clone() {
+                    if let Some(mut cell) = self.grid.get_mut(&dep) {
                         cell.dirty = true;
                         cell.cached_value = None;
+                    }
+                    // Track spills that need clearing
+                    if self.spill_map.contains_key(&dep) {
+                        spills_to_clear.push(dep.clone());
                     }
                     to_process.push(dep.clone());
                 }
             }
+        }
+
+        // Clear spills from dirty cells
+        for source in spills_to_clear {
+            self.clear_spill_from(&source);
         }
     }
 
@@ -368,6 +396,9 @@ impl App {
         self.edit_buffer.clear();
         self.status_message.clear();
 
+        // Clear any spill originating from this cell
+        self.clear_spill_from(&cell_ref);
+
         // Recreate engine with updated grid
         self.recreate_engine();
 
@@ -382,9 +413,307 @@ impl App {
             self.push_undo(cell_ref.clone(), None);
             self.grid.remove(&cell_ref);
             self.modified = true;
+
+            // Clear any spill originating from this cell
+            self.clear_spill_from(&cell_ref);
+
             self.recreate_engine();
             self.mark_dependents_dirty(&cell_ref);
         }
+    }
+
+    /// Insert a row above the cursor position
+    pub fn insert_row(&mut self) {
+        let at_row = self.cursor_row;
+
+        // Collect all cells at row >= at_row
+        let cells_to_move: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .filter(|entry| entry.key().row >= at_row)
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        // Remove them from grid
+        for (cell_ref, _) in &cells_to_move {
+            self.grid.remove(cell_ref);
+        }
+
+        // Update ALL formulas in the grid with shifted references
+        let op = ShiftOperation::InsertRow(at_row);
+        let all_cells: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        for (cell_ref, cell) in all_cells {
+            if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                if new_formula != *formula {
+                    let new_cell = Cell::new_script(&new_formula);
+                    self.grid.insert(cell_ref, new_cell);
+                }
+            }
+        }
+
+        // Reinsert moved cells with row + 1, also shifting their formulas
+        for (cell_ref, cell) in cells_to_move {
+            let new_ref = CellRef::new(cell_ref.row + 1, cell_ref.col);
+            let new_cell = if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                Cell::new_script(&new_formula)
+            } else {
+                cell
+            };
+            self.grid.insert(new_ref, new_cell);
+        }
+
+        // Clear spill maps and rebuild
+        self.spill_sources.clear();
+        self.spill_map.clear();
+        self.recreate_engine();
+        self.modified = true;
+        self.status_message = format!("Inserted row at {}", at_row + 1);
+    }
+
+    /// Delete the current row
+    pub fn delete_row(&mut self) {
+        let at_row = self.cursor_row;
+
+        // Collect cells at the deleted row (for undo - future enhancement)
+        let cells_at_row: Vec<CellRef> = self
+            .grid
+            .iter()
+            .filter(|entry| entry.key().row == at_row)
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        // Remove cells at the deleted row
+        for cell_ref in cells_at_row {
+            self.grid.remove(&cell_ref);
+        }
+
+        // Collect cells below the deleted row
+        let cells_to_move: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .filter(|entry| entry.key().row > at_row)
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        // Remove them from grid
+        for (cell_ref, _) in &cells_to_move {
+            self.grid.remove(cell_ref);
+        }
+
+        // Update ALL formulas with shifted references
+        let op = ShiftOperation::DeleteRow(at_row);
+        let all_cells: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        for (cell_ref, cell) in all_cells {
+            if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                if new_formula != *formula {
+                    let new_cell = if new_formula.contains("#REF!") {
+                        // Create a text cell with #REF! error
+                        Cell::new_text(&format!("={}", new_formula))
+                    } else {
+                        Cell::new_script(&new_formula)
+                    };
+                    self.grid.insert(cell_ref, new_cell);
+                }
+            }
+        }
+
+        // Reinsert moved cells with row - 1, also shifting their formulas
+        for (cell_ref, cell) in cells_to_move {
+            let new_ref = CellRef::new(cell_ref.row - 1, cell_ref.col);
+            let new_cell = if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                if new_formula.contains("#REF!") {
+                    Cell::new_text(&format!("={}", new_formula))
+                } else {
+                    Cell::new_script(&new_formula)
+                }
+            } else {
+                cell
+            };
+            self.grid.insert(new_ref, new_cell);
+        }
+
+        // Clear spill maps and rebuild
+        self.spill_sources.clear();
+        self.spill_map.clear();
+        self.recreate_engine();
+        self.modified = true;
+        self.status_message = format!("Deleted row {}", at_row + 1);
+    }
+
+    /// Insert a column left of the cursor position
+    pub fn insert_column(&mut self) {
+        let at_col = self.cursor_col;
+
+        // Collect all cells at col >= at_col
+        let cells_to_move: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .filter(|entry| entry.key().col >= at_col)
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        // Remove them from grid
+        for (cell_ref, _) in &cells_to_move {
+            self.grid.remove(cell_ref);
+        }
+
+        // Update ALL formulas in the grid with shifted references
+        let op = ShiftOperation::InsertColumn(at_col);
+        let all_cells: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        for (cell_ref, cell) in all_cells {
+            if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                if new_formula != *formula {
+                    let new_cell = Cell::new_script(&new_formula);
+                    self.grid.insert(cell_ref, new_cell);
+                }
+            }
+        }
+
+        // Reinsert moved cells with col + 1, also shifting their formulas
+        for (cell_ref, cell) in cells_to_move {
+            let new_ref = CellRef::new(cell_ref.row, cell_ref.col + 1);
+            let new_cell = if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                Cell::new_script(&new_formula)
+            } else {
+                cell
+            };
+            self.grid.insert(new_ref, new_cell);
+        }
+
+        // Shift column widths
+        let widths_to_shift: Vec<(usize, usize)> = self
+            .column_widths
+            .iter()
+            .filter(|&(&col, _)| col >= at_col)
+            .map(|(&col, &width)| (col, width))
+            .collect();
+
+        for (col, _) in &widths_to_shift {
+            self.column_widths.remove(col);
+        }
+        for (col, width) in widths_to_shift {
+            self.column_widths.insert(col + 1, width);
+        }
+
+        // Clear spill maps and rebuild
+        self.spill_sources.clear();
+        self.spill_map.clear();
+        self.recreate_engine();
+        self.modified = true;
+        self.status_message = format!("Inserted column at {}", CellRef::col_to_letters(at_col));
+    }
+
+    /// Delete the current column
+    pub fn delete_column(&mut self) {
+        let at_col = self.cursor_col;
+
+        // Collect cells at the deleted column
+        let cells_at_col: Vec<CellRef> = self
+            .grid
+            .iter()
+            .filter(|entry| entry.key().col == at_col)
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        // Remove cells at the deleted column
+        for cell_ref in cells_at_col {
+            self.grid.remove(&cell_ref);
+        }
+
+        // Collect cells to the right of the deleted column
+        let cells_to_move: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .filter(|entry| entry.key().col > at_col)
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        // Remove them from grid
+        for (cell_ref, _) in &cells_to_move {
+            self.grid.remove(cell_ref);
+        }
+
+        // Update ALL formulas with shifted references
+        let op = ShiftOperation::DeleteColumn(at_col);
+        let all_cells: Vec<(CellRef, Cell)> = self
+            .grid
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        for (cell_ref, cell) in all_cells {
+            if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                if new_formula != *formula {
+                    let new_cell = if new_formula.contains("#REF!") {
+                        Cell::new_text(&format!("={}", new_formula))
+                    } else {
+                        Cell::new_script(&new_formula)
+                    };
+                    self.grid.insert(cell_ref, new_cell);
+                }
+            }
+        }
+
+        // Reinsert moved cells with col - 1, also shifting their formulas
+        for (cell_ref, cell) in cells_to_move {
+            let new_ref = CellRef::new(cell_ref.row, cell_ref.col - 1);
+            let new_cell = if let CellType::Script(formula) = &cell.contents {
+                let new_formula = shift_formula_references(formula, op);
+                if new_formula.contains("#REF!") {
+                    Cell::new_text(&format!("={}", new_formula))
+                } else {
+                    Cell::new_script(&new_formula)
+                }
+            } else {
+                cell
+            };
+            self.grid.insert(new_ref, new_cell);
+        }
+
+        // Shift column widths
+        self.column_widths.remove(&at_col);
+        let widths_to_shift: Vec<(usize, usize)> = self
+            .column_widths
+            .iter()
+            .filter(|&(&col, _)| col > at_col)
+            .map(|(&col, &width)| (col, width))
+            .collect();
+
+        for (col, _) in &widths_to_shift {
+            self.column_widths.remove(col);
+        }
+        for (col, width) in widths_to_shift {
+            self.column_widths.insert(col - 1, width);
+        }
+
+        // Clear spill maps and rebuild
+        self.spill_sources.clear();
+        self.spill_map.clear();
+        self.recreate_engine();
+        self.modified = true;
+        self.status_message = format!("Deleted column {}", CellRef::col_to_letters(at_col));
     }
 
     /// Undo the last action
@@ -612,8 +941,21 @@ impl App {
     }
 
     /// Get the display value for a cell
-    pub fn get_cell_display(&self, cell_ref: &CellRef) -> String {
+    pub fn get_cell_display(&mut self, cell_ref: &CellRef) -> String {
+        // Check if this is a spill cell (value is in shared spill_map)
+        if self.spill_sources.contains_key(cell_ref) {
+            if let Some(val) = self.spill_map.get(cell_ref) {
+                return format_dynamic(&val);
+            }
+            return "#SPILL?".to_string(); // Orphaned spill cell
+        }
+
         let Some(cell) = self.grid.get(cell_ref) else {
+            // Also check spill_map for cells that aren't in spill_sources
+            // (the source cell itself stores its first value there too)
+            if let Some(val) = self.spill_map.get(cell_ref) {
+                return format_dynamic(&val);
+            }
             return String::new();
         };
 
@@ -635,21 +977,97 @@ impl App {
                 }
 
                 let processed = preprocess_script(s);
+                drop(cell);
+
                 match eval_with_functions(&self.engine, &processed, self.custom_ast.as_ref()) {
                     Ok(result) => {
-                        let display = format_dynamic(&result);
-                        // Cache the result and clear dirty flag
-                        // Need to drop the read guard first
-                        drop(cell);
-                        if let Some(mut cell) = self.grid.get_mut(cell_ref) {
-                            cell.cached_value = Some(display.clone());
-                            cell.dirty = false;
+                        if result.is_array() {
+                            self.handle_array_spill(cell_ref, result)
+                        } else {
+                            let display = format_dynamic(&result);
+                            // Cache the result and clear dirty flag
+                            if let Some(mut cell) = self.grid.get_mut(cell_ref) {
+                                cell.cached_value = Some(display.clone());
+                                cell.dirty = false;
+                            }
+                            display
                         }
-                        display
                     }
                     Err(_) => "#ERR!".to_string(),
                 }
             }
+        }
+    }
+
+    /// Handle array result - check conflicts and set up spill
+    fn handle_array_spill(&mut self, source: &CellRef, result: Dynamic) -> String {
+        let array: Vec<Dynamic> = result.into_array().unwrap();
+        if array.is_empty() {
+            return String::new();
+        }
+
+        // Check for conflicts in spill range
+        for i in 1..array.len() {
+            let spill_ref = CellRef::new(source.row + i, source.col);
+
+            // Conflict if cell exists with content
+            if let Some(cell) = self.grid.get(&spill_ref) {
+                if !matches!(cell.contents, CellType::Empty) {
+                    return "#SPILL!".to_string();
+                }
+            }
+
+            // Conflict if another formula is spilling here
+            if let Some(other_source) = self.spill_sources.get(&spill_ref) {
+                if other_source != source {
+                    return "#SPILL!".to_string();
+                }
+            }
+        }
+
+        // Clear old spill from this source
+        self.clear_spill_from(source);
+
+        // Store all array values in the shared spill_map
+        // This makes them accessible to the engine for chained VEC calls
+        for (i, val) in array.iter().enumerate() {
+            let cell_ref = CellRef::new(source.row + i, source.col);
+            self.spill_map.insert(cell_ref.clone(), val.clone());
+
+            // Register spill cells (skip index 0, that's the source cell)
+            if i > 0 {
+                self.spill_sources.insert(cell_ref, source.clone());
+            }
+        }
+
+        // Format first value for display and cache
+        let first = format_dynamic(&array[0]);
+
+        // Cache the first value in the source cell
+        if let Some(mut cell) = self.grid.get_mut(source) {
+            cell.cached_value = Some(first.clone());
+            cell.dirty = false;
+        }
+
+        first
+    }
+
+    /// Clear spill cells originating from a source
+    fn clear_spill_from(&mut self, source: &CellRef) {
+        // Remove the source cell's value from spill_map
+        self.spill_map.remove(source);
+
+        // Remove all spill cells from this source
+        let to_remove: Vec<CellRef> = self
+            .spill_sources
+            .iter()
+            .filter(|(_, src)| *src == source)
+            .map(|(cell, _)| cell.clone())
+            .collect();
+
+        for cell in to_remove {
+            self.spill_sources.remove(&cell);
+            self.spill_map.remove(&cell);
         }
     }
 
@@ -756,6 +1174,32 @@ impl App {
                     self.status_message = "Usage: :colwidth [COL] WIDTH".to_string();
                 }
             }
+            "import" => {
+                if let Some(path) = args {
+                    self.import_csv(path);
+                } else {
+                    self.status_message = "Usage: :import <file.csv>".to_string();
+                }
+            }
+            "export" => {
+                if let Some(path) = args {
+                    self.export_csv(path);
+                } else {
+                    self.status_message = "Usage: :export <file.csv>".to_string();
+                }
+            }
+            "ir" | "insertrow" => {
+                self.insert_row();
+            }
+            "dr" | "deleterow" => {
+                self.delete_row();
+            }
+            "ic" | "insertcol" => {
+                self.insert_column();
+            }
+            "dc" | "deletecol" => {
+                self.delete_column();
+            }
             _ => {
                 self.status_message = format!("Unknown command: {}", command);
             }
@@ -791,6 +1235,42 @@ impl App {
         self.redo_stack.clear();
         self.status_message = format!("Loaded {}", path.display());
         Ok(())
+    }
+
+    /// Import CSV data starting at current cursor position
+    fn import_csv(&mut self, path: &str) {
+        match parse_csv(std::path::Path::new(path), self.cursor_row, self.cursor_col) {
+            Ok(cells) => {
+                let count = cells.len();
+                if count == 0 {
+                    self.status_message = "CSV file is empty".to_string();
+                    return;
+                }
+                for (cell_ref, cell) in cells {
+                    self.grid.insert(cell_ref, cell);
+                }
+                self.modified = true;
+                self.recreate_engine();
+                self.status_message = format!("Imported {} cells from {}", count, path);
+            }
+            Err(e) => {
+                self.status_message = format!("Import error: {}", e);
+            }
+        }
+    }
+
+    /// Export grid to CSV file
+    fn export_csv(&mut self, path: &str) {
+        // Use visual selection if active, otherwise auto-detect data bounds
+        let range = self.get_selection();
+        match write_csv(std::path::Path::new(path), &self.grid, range) {
+            Ok(()) => {
+                self.status_message = format!("Exported to {}", path);
+            }
+            Err(e) => {
+                self.status_message = format!("Export error: {}", e);
+            }
+        }
     }
 }
 
