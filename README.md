@@ -24,7 +24,7 @@ Why it's fun:
 - 🧠 Formulas are real Rhai scripts (with spreadsheet sugar)
 - 📈 Quick plots right in the terminal
 
-![screen.jpg](gridline in action)
+![gridline in action](screen.jpg)
 
 ## Quick Start 🚀
 
