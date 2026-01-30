@@ -7,7 +7,10 @@ E1: =VEC(A1:A3).map(|x| 2 * x)
 F1: =VEC(E1:E3).map(|x| x + 1)
 G1: =VEC(A1:A3).map(|x| x * 2).map(|x| x - 1)
 H1: 10
-I1: =sorted(VEC(H1:H3))
 H2: 4
 A3: 3
 H3: 7
+H4: 6
+H5: 8
+H6: 13
+H7: 5

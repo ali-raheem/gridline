@@ -1,18 +1,4 @@
 <p align="center">
-<pre>
-   ____      _     _ _
-  / ___|_ __(_) __| | (_)_ __   ___
- | |  _| '__| |/ _` | | | '_ \ / _ \
- | |_| | |  | | (_| | | | | | |  __/
-  \____|_|  |_|\__,_|_|_|_| |_|\___|
-</pre>
-</p>
-
-<p align="center">
-  Terminal spreadsheet with Rhai-powered formulas.
-</p>
-
-<p align="center">
   <a href="https://www.rust-lang.org/"><img alt="Rust" src="https://img.shields.io/badge/Rust-2024-000000?logo=rust" /></a>
   <a href="https://rhai.rs/book/index.html"><img alt="Rhai" src="https://img.shields.io/badge/Rhai-scripting-2b2b2b" /></a>
   <a href="https://github.com/ratatui/ratatui"><img alt="ratatui" src="https://img.shields.io/badge/TUI-ratatui-1f2937" /></a>
@@ -20,7 +6,7 @@
 
 # Gridline ✨
 
-Gridline is a proof-of-concept terminal spreadsheet. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). Your sheet lives in a plain text file, and your reusable logic can live in a separate `.rhai` functions file.
+Gridline is a proof-of-concept terminal spreadsheet with Rhai support. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). Your sheet lives in a plain text file, and your reusable logic can live in a separate `.rhai` functions file.
 
 What you get (today):
 - TUI grid with a formula bar and command mode
@@ -37,6 +23,8 @@ Why it's fun:
 - 🧾 Plain-text sheets you can diff and version
 - 🧠 Formulas are real Rhai scripts (with spreadsheet sugar)
 - 📈 Quick plots right in the terminal
+
+![screen.jpg](gridline in action)
 
 ## Quick Start 🚀
 
