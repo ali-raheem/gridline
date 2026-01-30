@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["Ali Raheem"]
 repository = "https://github.com/ali-raheem/gridline"
 license = "MIT OR Apache-2.0"
+description = "Terminal spreadsheet with Rhai-powered formulas."
 
 [lib]
 name = "gridline_engine"
