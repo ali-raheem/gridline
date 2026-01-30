@@ -1,0 +1,20 @@
+# Gridline Spreadsheet
+A1: 1
+B1: 10
+C1: =SCATTER(A1:B5, "title", "xaxis", "yaxis")
+D1: =BARCHART(B1:B5)
+A2: 2
+B2: 20
+A3: 3
+B3: 40
+A4: 4
+B4: 80
+A5: 5
+B5: 150
+E5: =if B5 > 150 { "High" } else { "lol" }
+F5: =len(@E5)
+D6: "lol"
+E6: =len(@D6)
+F6: =len(E5)
+E7: =if B5 > 140 { 5 } else { 1}
+F7: =E6 * 2

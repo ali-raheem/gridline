@@ -1,0 +1,25 @@
+[package]
+name = "gridline"
+version = "0.1.0"
+edition = "2024"
+authors = ["Ali Raheem"]
+repository = "https://github.com/ali-raheem/gridline"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "gridline_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gridline"
+path = "src/main.rs"
+
+[dependencies]
+rhai = "1.24.0"
+regex = "1"
+dashmap = "6"
+serde = { version = "1.0", features = ["derive"] }
+ratatui = "0.29"
+crossterm = "0.28"
+thiserror = "2.0"
+textplots = "0.8"

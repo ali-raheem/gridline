@@ -1,0 +1,55 @@
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use ratatui::prelude::*;
+use std::io;
+
+use super::actions::{apply_action, handle_command_text, handle_edit_text};
+use super::app::{App, Mode};
+use super::keymap::translate;
+use super::ui;
+
+pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+    loop {
+        terminal.draw(|f| ui::draw(f, app))?;
+
+        if let Event::Key(key) = event::read()? {
+            // Plot modal takes over input
+            if app.plot_modal.is_some() {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('g')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        app.close_plot_modal();
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
+            // Handle quit
+            if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
+                if !app.modified || app.confirm_quit {
+                    return Ok(());
+                } else {
+                    app.status_message = "Unsaved changes! Press Ctrl+Q again to quit without saving, or :wq to save and quit".to_string();
+                    app.confirm_quit = true;
+                    continue;
+                }
+            }
+
+            // Reset confirm_quit on any other key
+            app.confirm_quit = false;
+
+            if let Some(action) = translate(app.keymap, app.mode, key) {
+                apply_action(app, action, key);
+                continue;
+            }
+
+            // Text entry fallbacks (not bound in keymaps).
+            match app.mode {
+                Mode::Edit => handle_edit_text(app, key),
+                Mode::Command => handle_command_text(app, key),
+                _ => {}
+            }
+        }
+    }
+}
