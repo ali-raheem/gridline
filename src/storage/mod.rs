@@ -1,6 +1,6 @@
 //! Storage module for .grd file format and CSV/Markdown import/export
 
-mod csv;
+pub(crate) mod csv;
 mod md;
 mod parser;
 mod writer;

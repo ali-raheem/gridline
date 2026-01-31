@@ -148,13 +148,29 @@ mod tests {
     use super::write_markdown;
     use crate::tui::App;
     use std::fs;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     #[test]
     fn markdown_export_matches_expected_simple() {
-        let grid_path = Path::new("test/simple.grid");
-        let expected_path = Path::new("test/simple.expected.md");
-        let output_path = std::env::temp_dir().join("gridline_simple_export.md");
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let grid_path = repo_root.join("test/simple.grid");
+        let expected_path = repo_root.join("test/simple.expected.md");
+        let output_path = std::env::temp_dir().join(format!(
+            "gridline_simple_export_{}_{}_{:?}.md",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(output_path.clone());
 
         let (keymap, _warnings) = crate::tui::load_keymap(None, None);
         let mut app =
@@ -166,8 +182,6 @@ mod tests {
         let expected = fs::read_to_string(expected_path).unwrap();
 
         assert_eq!(actual, expected);
-
-        let _ = fs::remove_file(&output_path);
     }
 }
 

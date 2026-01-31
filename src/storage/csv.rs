@@ -25,7 +25,7 @@ pub fn parse_csv(path: &Path, start_row: usize, start_col: usize) -> Result<Vec<
 }
 
 /// Parse a single CSV line, handling quoted fields
-fn parse_csv_line(line: &str) -> Vec<String> {
+pub(crate) fn parse_csv_line(line: &str) -> Vec<String> {
     let mut fields = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
@@ -63,7 +63,7 @@ fn parse_csv_line(line: &str) -> Vec<String> {
 /// - Empty string -> skip (handled by caller)
 /// - Valid number -> Number (unless it has leading zeros like "007")
 /// - Otherwise -> Text
-fn parse_csv_field(field: &str) -> Cell {
+pub(crate) fn parse_csv_field(field: &str) -> Cell {
     let trimmed = field.trim();
 
     if trimmed.is_empty() {
@@ -178,6 +178,7 @@ fn escape_csv_field(field: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Core;
 
     #[test]
     fn test_parse_csv_line_simple() {
@@ -225,5 +226,20 @@ mod tests {
     fn test_parse_csv_field_zero() {
         let cell = parse_csv_field("0");
         assert!(matches!(cell.contents, gridline_engine::engine::CellType::Number(n) if n == 0.0));
+    }
+
+    #[test]
+    fn test_import_csv_invalidates_dependents() {
+        let mut core = Core::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "1").unwrap(); // A1
+        core.set_cell_from_input(CellRef::new(0, 1), "=A1 + 1").unwrap(); // B1
+
+        let display_before = core.get_cell_display(&CellRef::new(0, 1));
+        assert_eq!(display_before, "2");
+
+        core.import_csv_raw("5", 0, 0).unwrap(); // overwrite A1
+
+        let display_after = core.get_cell_display(&CellRef::new(0, 1));
+        assert_eq!(display_after, "6");
     }
 }

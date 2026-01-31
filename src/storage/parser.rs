@@ -62,7 +62,8 @@ fn parse_cell_value(value: &str, line_num: usize) -> Result<Cell> {
     // Quoted string: starts and ends with '"'
     if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
         let text = &value[1..value.len() - 1];
-        return Ok(Cell::new_text(text));
+        let text = unescape_grd_text(text);
+        return Ok(Cell::new_text(&text));
     }
 
     // Try to parse as number
@@ -74,6 +75,30 @@ fn parse_cell_value(value: &str, line_num: usize) -> Result<Cell> {
         line: line_num,
         message: format!("Invalid value: {}. Use quotes for text.", value),
     })
+}
+
+fn unescape_grd_text(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            if let Some(next) = chars.next() {
+                match next {
+                    '\\' => out.push('\\'),
+                    '"' => out.push('"'),
+                    _ => {
+                        out.push('\\');
+                        out.push(next);
+                    }
+                }
+            } else {
+                out.push('\\');
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -99,6 +124,17 @@ mod tests {
         let cell = grid.get(&CellRef::new(0, 0)).unwrap();
         match &cell.contents {
             CellType::Text(s) => assert_eq!(s, "Hello"),
+            _ => panic!("Expected text"),
+        }
+    }
+
+    #[test]
+    fn test_parse_text_escaped_quotes() {
+        let content = r#"A1: "He said \"hi\"""#;
+        let grid = parse_grd_content(content).unwrap();
+        let cell = grid.get(&CellRef::new(0, 0)).unwrap();
+        match &cell.contents {
+            CellType::Text(s) => assert_eq!(s, "He said \"hi\""),
             _ => panic!("Expected text"),
         }
     }

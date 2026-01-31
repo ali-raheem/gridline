@@ -62,11 +62,13 @@ impl Core {
                         }
                     }
                     Err(e) => {
-                        // Show first 50 chars of error for debugging
-                        let err_msg = if e.len() > 50 {
-                            format!("#ERR: {}...", &e[..47])
+                        // Show first 50 chars of error for debugging (UTF-8 safe)
+                        let mut chars = e.chars();
+                        let prefix: String = chars.by_ref().take(50).collect();
+                        let err_msg = if chars.next().is_some() {
+                            format!("#ERR: {}...", prefix)
                         } else {
-                            format!("#ERR: {}", e)
+                            format!("#ERR: {}", prefix)
                         };
                         err_msg
                     }
@@ -86,18 +88,22 @@ impl Core {
         for i in 1..array.len() {
             let spill_ref = CellRef::new(source.row + i, source.col);
 
-            // Conflict if cell exists with content
-            if let Some(cell) = self.grid.get(&spill_ref) {
-                if !matches!(cell.contents, CellType::Empty) {
-                    return "#SPILL!".to_string();
-                }
-            }
+            // Compute conflicts in a narrow scope so we can mutate after.
+            let (has_cell_conflict, has_spill_conflict) = {
+                let cell_conflict = self
+                    .grid
+                    .get(&spill_ref)
+                    .is_some_and(|cell| !matches!(cell.contents, CellType::Empty));
+                let spill_conflict = self
+                    .spill_sources
+                    .get(&spill_ref)
+                    .is_some_and(|other_source| other_source != source);
+                (cell_conflict, spill_conflict)
+            };
 
-            // Conflict if another formula is spilling here
-            if let Some(other_source) = self.spill_sources.get(&spill_ref) {
-                if other_source != source {
-                    return "#SPILL!".to_string();
-                }
+            if has_cell_conflict || has_spill_conflict {
+                self.clear_spill_from(source);
+                return "#SPILL!".to_string();
             }
         }
 

@@ -121,8 +121,26 @@ fn eval_script_cell(ctx: &NativeCallContext, script: &str) -> Option<f64> {
     None
 }
 
-fn cell_value_or_zero(ctx: &NativeCallContext, grid: &Grid, row: usize, col: usize) -> f64 {
+fn cell_value_or_zero(
+    ctx: &NativeCallContext,
+    grid: &Grid,
+    value_cache: &ValueCache,
+    row: usize,
+    col: usize,
+) -> f64 {
     let cell_ref = CellRef::new(row, col);
+
+    // Check value cache first (for pre-computed formulas and spills)
+    if let Some(cached_val) = value_cache.get(&cell_ref) {
+        if let Ok(n) = cached_val.as_float() {
+            return n;
+        }
+        if let Ok(n) = cached_val.as_int() {
+            return n as f64;
+        }
+        return 0.0;
+    }
+
     let Some(cell) = grid.get(&cell_ref) else {
         return 0.0;
     };
@@ -234,6 +252,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
     // sum_range(r1, c1, r2, c2)
     let grid_sum = grid.clone();
+    let cache_sum = value_cache.clone();
     engine.register_fn(
         "sum_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -244,7 +263,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             let mut sum = 0.0;
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
-                    sum += cell_value_or_zero(&ctx, &grid_sum, row, col);
+                    sum += cell_value_or_zero(&ctx, &grid_sum, &cache_sum, row, col);
                 }
             }
             sum
@@ -253,6 +272,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
     // avg_range(r1, c1, r2, c2)
     let grid_avg = grid.clone();
+    let cache_avg = value_cache.clone();
     engine.register_fn(
         "avg_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -264,7 +284,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             let mut count = 0;
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
-                    sum += cell_value_or_zero(&ctx, &grid_avg, row, col);
+                    sum += cell_value_or_zero(&ctx, &grid_avg, &cache_avg, row, col);
                     count += 1;
                 }
             }
@@ -274,6 +294,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
     // count_range(r1, c1, r2, c2): count non-empty
     let grid_count = grid.clone();
+    let cache_count = value_cache.clone();
     engine.register_fn(
         "count_range",
         move |_ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -285,6 +306,10 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(row, col);
+                    if cache_count.contains_key(&cell_ref) {
+                        count += 1;
+                        continue;
+                    }
                     if let Some(cell) = grid_count.get(&cell_ref)
                         && !matches!(cell.contents, CellType::Empty)
                     {
@@ -298,6 +323,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
     // min_range(r1, c1, r2, c2)
     let grid_min = grid.clone();
+    let cache_min = value_cache.clone();
     engine.register_fn(
         "min_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -308,7 +334,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             let mut min_val = f64::INFINITY;
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
-                    let val = cell_value_or_zero(&ctx, &grid_min, row, col);
+                    let val = cell_value_or_zero(&ctx, &grid_min, &cache_min, row, col);
                     if val < min_val {
                         min_val = val;
                     }
@@ -324,6 +350,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
     // max_range(r1, c1, r2, c2)
     let grid_max = grid.clone();
+    let cache_max = value_cache.clone();
     engine.register_fn(
         "max_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -334,7 +361,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             let mut max_val = f64::NEG_INFINITY;
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
-                    let val = cell_value_or_zero(&ctx, &grid_max, row, col);
+                    let val = cell_value_or_zero(&ctx, &grid_max, &cache_max, row, col);
                     if val > max_val {
                         max_val = val;
                     }
@@ -652,6 +679,21 @@ mod tests {
 
         let result: f64 = engine.eval("sum_range(0, 0, 1, 0)").unwrap();
         assert_eq!(result, 3.0);
+    }
+
+    #[test]
+    fn test_sum_range_prefers_value_cache() {
+        let grid: Grid = DashMap::new();
+        grid.insert(CellRef::new(0, 0), Cell::new_script("unknown_func()"));
+
+        let value_cache = ValueCache::default();
+        value_cache.insert(CellRef::new(0, 0), Dynamic::from(5.0_f64));
+
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: f64 = engine.eval("sum_range(0, 0, 0, 0)").unwrap();
+        assert_eq!(result, 5.0);
     }
 
     #[test]

@@ -32,8 +32,6 @@ impl Core {
     fn mark_dependents_dirty(&mut self, changed_cell: &CellRef) {
         let mut to_process = vec![changed_cell.clone()];
         let mut visited = std::collections::HashSet::new();
-        let mut spills_to_clear = Vec::new();
-
         while let Some(cell_ref) = to_process.pop() {
             if !visited.insert(cell_ref.clone()) {
                 continue;
@@ -46,24 +44,15 @@ impl Core {
                         cell.dirty = true;
                         cell.cached_value = None;
                     }
-                    // Clear cached value so it will be re-evaluated
-                    self.value_cache.remove(&dep);
-                    // Track spills that need clearing
-                    if self.value_cache.contains_key(&dep) {
-                        spills_to_clear.push(dep.clone());
-                    }
+                    // Clear any cached value and spill output for this dependent.
+                    self.clear_spill_from(&dep);
                     to_process.push(dep.clone());
                 }
             }
         }
-
-        // Clear spills from dirty cells
-        for source in spills_to_clear {
-            self.clear_spill_from(&source);
-        }
     }
 
-    fn invalidate_script_cache(&mut self) {
+    pub(crate) fn invalidate_script_cache(&mut self) {
         for mut entry in self.grid.iter_mut() {
             if let CellType::Script(_) = entry.contents {
                 entry.dirty = true;
@@ -441,5 +430,33 @@ mod tests {
         core.delete_column(1);
         assert!(core.value_cache.is_empty());
         assert!(core.spill_sources.is_empty());
+    }
+
+    #[test]
+    fn test_spill_conflict_clears_stale_spill() {
+        let mut core = Core::new();
+        core.set_cell_from_input(CellRef::new(0, 1), "1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
+        core.set_cell_from_input(CellRef::new(2, 1), "3").unwrap(); // B3
+        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)").unwrap(); // A1
+
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+        let spill_cell = CellRef::new(1, 0); // A2
+        assert!(core.spill_sources.contains_key(&spill_cell));
+        assert!(core.value_cache.contains_key(&spill_cell));
+
+        // Introduce a conflict in the spill range.
+        core.set_cell_from_input(spill_cell.clone(), "\"x\"").unwrap();
+
+        // Force A1 to re-evaluate without clearing spill state first.
+        if let Some(mut cell) = core.grid.get_mut(&CellRef::new(0, 0)) {
+            cell.dirty = true;
+            cell.cached_value = None;
+        }
+
+        let display = core.get_cell_display(&CellRef::new(0, 0));
+        assert_eq!(display, "#SPILL!");
+        assert!(!core.spill_sources.contains_key(&spill_cell));
+        assert!(!core.value_cache.contains_key(&spill_cell));
     }
 }

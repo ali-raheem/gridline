@@ -31,7 +31,7 @@ pub fn write_grd_content(grid: &Grid) -> String {
         let value_str = match &cell.contents {
             CellType::Empty => continue, // Skip empty cells
             CellType::Number(n) => n.to_string(),
-            CellType::Text(s) => format!("\"{}\"", s),
+            CellType::Text(s) => format!("\"{}\"", escape_grd_text(s)),
             CellType::Script(s) => format!("={}", s),
         };
 
@@ -39,6 +39,18 @@ pub fn write_grd_content(grid: &Grid) -> String {
     }
 
     lines.join("\n") + "\n"
+}
+
+fn escape_grd_text(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

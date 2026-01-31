@@ -112,9 +112,50 @@ impl Core {
             self.grid.insert(cell_ref, cell);
         }
         self.modified = true;
+        // Clear caches/spills and mark scripts dirty so dependent formulas re-evaluate
+        self.value_cache.clear();
+        self.spill_sources.clear();
+        self.invalidate_script_cache();
         // Rebuild engine so builtins see updated grid
         let _ = self.recreate_engine_with_functions();
         // Rebuild dependencies
+        self.rebuild_dependents();
+        Ok(count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn import_csv_raw(
+        &mut self,
+        csv_content: &str,
+        start_row: usize,
+        start_col: usize,
+    ) -> Result<usize> {
+        let mut count = 0;
+        for (row_idx, line) in csv_content.lines().enumerate() {
+            for (col_idx, field) in crate::storage::csv::parse_csv_line(line)
+                .into_iter()
+                .enumerate()
+            {
+                if field.is_empty() {
+                    continue;
+                }
+                let cell_ref = gridline_engine::engine::CellRef::new(
+                    start_row + row_idx,
+                    start_col + col_idx,
+                );
+                let cell = crate::storage::csv::parse_csv_field(&field);
+                self.grid.insert(cell_ref, cell);
+                count += 1;
+            }
+        }
+        if count == 0 {
+            return Err(GridlineError::EmptyCsv);
+        }
+        self.modified = true;
+        self.value_cache.clear();
+        self.spill_sources.clear();
+        self.invalidate_script_cache();
+        let _ = self.recreate_engine_with_functions();
         self.rebuild_dependents();
         Ok(count)
     }
