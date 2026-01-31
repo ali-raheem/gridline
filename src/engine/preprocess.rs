@@ -28,8 +28,9 @@ pub enum ShiftOperation {
 /// - Delete row at R: refs to row > R become row - 1; row == R becomes `#REF!`
 /// - Same logic for columns
 pub fn shift_formula_references(formula: &str, op: ShiftOperation) -> String {
+    let mut replacements: Vec<String> = Vec::new();
     // Handle range functions like SUM(A1:B5, ...)
-    let with_shifted_ranges = crate::builtins::range_fn_re()
+    let with_placeholders = crate::builtins::range_fn_re()
         .replace_all(formula, |caps: &regex::Captures| {
             let func_name = &caps[1];
             let start_ref = &caps[2];
@@ -41,15 +42,32 @@ pub fn shift_formula_references(formula: &str, op: ShiftOperation) -> String {
 
             // If either ref became #REF!, return #REF!
             if new_start == "#REF!" || new_end == "#REF!" {
-                return "#REF!".to_string();
+                let idx = replacements.len();
+                replacements.push("#REF!".to_string());
+                return format!("@@@{}@@@", idx);
             }
 
-            format!("{}({}:{}{}", func_name, new_start, new_end, rest_args)
+            let idx = replacements.len();
+            replacements.push(format!(
+                "{}({}:{}{})",
+                func_name, new_start, new_end, rest_args
+            ));
+            format!("@@@{}@@@", idx)
         })
         .to_string();
 
     // Now shift individual cell references
-    shift_cell_refs_outside_strings(&with_shifted_ranges, op)
+    let shifted = shift_cell_refs_outside_strings(&with_placeholders, op);
+    if replacements.is_empty() {
+        return shifted;
+    }
+
+    let mut restored = shifted;
+    for (idx, replacement) in replacements.into_iter().enumerate() {
+        let placeholder = format!("@@@{}@@@", idx);
+        restored = restored.replace(&placeholder, &replacement);
+    }
+    restored
 }
 
 fn shift_single_ref(cell_ref_str: &str, op: ShiftOperation) -> String {
@@ -174,6 +192,32 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
 /// Also transforms range functions like SUM(A1:B5, ...) into sum_range(0, 0, 4, 1, ...).
 pub fn preprocess_script(script: &str) -> String {
     preprocess_script_with_context(script, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shift_formula_references_preserves_paren() {
+        let formula = "VEC(A1:A100)";
+        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
+        assert_eq!(shifted, "VEC(B1:B100)");
+    }
+
+    #[test]
+    fn test_shift_formula_references_mixed_range_and_cell() {
+        let formula = "SUM(A1:A3) + B1";
+        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
+        assert_eq!(shifted, "SUM(B1:B3) + C1");
+    }
+
+    #[test]
+    fn test_shift_formula_references_vec_and_cell() {
+        let formula = "VEC(A1:A10) + B1";
+        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
+        assert_eq!(shifted, "VEC(B1:B10) + C1");
+    }
 }
 
 /// Preprocess script with optional current cell context for ROW()/COL().

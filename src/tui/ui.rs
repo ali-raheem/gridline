@@ -69,7 +69,7 @@ fn draw_formula_bar(f: &mut Frame, app: &App, area: Rect) {
             }
         }
         Mode::Normal => {
-            if let Some(cell) = app.grid.get(&cell_ref) {
+            if let Some(cell) = app.core.grid.get(&cell_ref) {
                 format!("{}: {}", cell_name, cell.to_input_string())
             } else {
                 format!("{}: (empty)", cell_name)
@@ -145,7 +145,7 @@ fn draw_grid(f: &mut Frame, app: &mut App, area: Rect) {
             }
 
             let cell_ref = CellRef::new(row, col);
-            let display = app.get_cell_display(&cell_ref);
+            let display = app.core.get_cell_display(&cell_ref);
             let display = if display.starts_with(PLOT_PREFIX) {
                 plot_placeholder(&display)
             } else {
@@ -300,7 +300,7 @@ fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
 /// Parse a cell as a numeric value for plotting.
 /// Returns `Some(value)` if the cell contains a valid number, `None` otherwise.
 fn cell_value_for_plot(app: &mut App, row: usize, col: usize) -> Option<f64> {
-    let s = app.get_cell_display(&CellRef::new(row, col));
+    let s = app.core.get_cell_display(&CellRef::new(row, col));
     s.parse::<f64>().ok()
 }
 
@@ -351,10 +351,10 @@ fn render_textplots(data: &PlotData, width: u32, height: u32) -> String {
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
-    let file_info = if let Some(ref path) = app.file_path {
-        let modified_indicator = if app.modified { " [+]" } else { "" };
+    let file_info = if let Some(ref path) = app.core.file_path {
+        let modified_indicator = if app.core.modified { " [+]" } else { "" };
         format!("{}{}", path.display(), modified_indicator)
-    } else if app.modified {
+    } else if app.core.modified {
         "[New File] [+]".to_string()
     } else {
         "[New File]".to_string()
@@ -362,15 +362,15 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
 
     let help = app.keymap.status_hint();
 
-    let status = if !app.status_message.is_empty() {
-        app.status_message.clone()
+    let status = if !app.core.status_message.is_empty() {
+        app.core.status_message.clone()
     } else {
         format!("{}  |  {}", file_info, help)
     };
 
-    let style = if app.status_message.starts_with("Error") {
+    let style = if app.core.status_message.starts_with("Error") {
         Style::default().fg(Color::Red)
-    } else if !app.status_message.is_empty() {
+    } else if !app.core.status_message.is_empty() {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default().fg(Color::DarkGray)

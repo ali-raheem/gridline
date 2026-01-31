@@ -1,6 +1,7 @@
 //! Gridline - A spreadsheet application with TUI
 
 mod error;
+mod core;
 mod storage;
 mod tui;
 

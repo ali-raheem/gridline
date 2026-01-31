@@ -8,7 +8,7 @@ mod keymap;
 mod ui;
 
 pub use app::App;
-pub use keymap::{load_keymap, Keymap};
+pub use keymap::load_keymap;
 
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},

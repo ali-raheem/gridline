@@ -47,7 +47,7 @@ pub fn write_markdown(path: &Path, app: &mut App) -> std::io::Result<()> {
 
         for col in min_col..=max_col {
             let cell_ref = CellRef::new(row, col);
-            let display = app.get_cell_display(&cell_ref);
+            let display = app.core.get_cell_display(&cell_ref);
 
             // Check if this is a plot cell
             if display.starts_with(PLOT_PREFIX) {
@@ -86,7 +86,7 @@ fn find_grid_bounds(app: &App) -> (usize, usize, usize, usize) {
     let mut max_col = 0usize;
 
     // Check grid cells
-    for entry in app.grid.iter() {
+    for entry in app.core.grid.iter() {
         let cell_ref = entry.key();
         min_row = min_row.min(cell_ref.row);
         min_col = min_col.min(cell_ref.col);
@@ -95,7 +95,7 @@ fn find_grid_bounds(app: &App) -> (usize, usize, usize, usize) {
     }
 
     // Check spill_map for additional cells
-    for entry in app.spill_map.iter() {
+    for entry in app.core.spill_map.iter() {
         let cell_ref = entry.key();
         min_row = min_row.min(cell_ref.row);
         min_col = min_col.min(cell_ref.col);
@@ -118,7 +118,7 @@ fn render_plot_ascii<W: Write>(w: &mut W, spec: &PlotSpec, app: &mut App) -> std
     // Create cell value accessor
     let cell_value = |row: usize, col: usize| -> Option<f64> {
         let cell_ref = CellRef::new(row, col);
-        let display = app.get_cell_display(&cell_ref);
+        let display = app.core.get_cell_display(&cell_ref);
         display.parse::<f64>().ok()
     };
 

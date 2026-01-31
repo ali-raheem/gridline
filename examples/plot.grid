@@ -8,7 +8,7 @@ G1: "Round(B)"
 G2: =VEC(B1:B10).map(|x| round(x))
 H2: =VEC(B1:B10).map(|x| floor(x))
 C3: =VEC(A1:A10).map(|x| if x % 2 == 0 { x } else { "" })
-E5: =if B5 > 150 { "High" } else { "lol" }
+E5: =if B5 > 150 { "High" } else { "Low" }
 F5: =len(@E5)
 D6: "lol"
 E6: =len(@D6)
