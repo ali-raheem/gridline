@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use directories::ProjectDirs;
 
 use super::keymap::Keymap;
 
@@ -165,7 +166,7 @@ impl App {
             None,
         );
 
-        App {
+        let mut app = App {
             grid,
             engine,
             cursor_col: 0,
@@ -201,7 +202,10 @@ impl App {
             spill_sources: HashMap::new(),
             spill_map,
             computed_map,
-        }
+        };
+
+        app.load_default_functions();
+        app
     }
 
     pub fn close_plot_modal(&mut self) {
@@ -241,6 +245,41 @@ impl App {
             app.load_file(p)?;
         }
         Ok(app)
+    }
+
+    fn load_default_functions(&mut self) {
+        let Some(proj) = ProjectDirs::from("", "", "gridline") else {
+            return;
+        };
+        let mut path = proj.config_dir().to_path_buf();
+        path.push("default.rhai");
+        if path.exists() {
+            self.load_functions_silent(&path);
+        }
+    }
+
+    fn load_functions_silent(&mut self, path: &std::path::Path) {
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                let path_buf = path.to_path_buf();
+                if !self.functions_files.contains(&path_buf) {
+                    self.functions_files.push(path_buf);
+                }
+                match &mut self.custom_functions {
+                    Some(existing) => {
+                        existing.push_str("\n\n");
+                        existing.push_str(&content);
+                    }
+                    None => {
+                        self.custom_functions = Some(content);
+                    }
+                }
+                self.recreate_engine();
+            }
+            Err(e) => {
+                self.status_message = format!("Error loading functions: {}", e);
+            }
+        }
     }
 
     /// Load custom Rhai functions from a file (appends to existing functions)

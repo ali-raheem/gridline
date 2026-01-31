@@ -20,9 +20,10 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
             // Plot modal takes over input
             if app.plot_modal.is_some() {
                 match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('g')
-                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        app.close_plot_modal();
+                    }
+                    KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.close_plot_modal();
                     }
                     _ => {}
@@ -44,21 +45,7 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                 continue;
             }
 
-            // Handle quit
-            if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
-                if !app.modified || app.confirm_quit {
-                    return Ok(());
-                } else {
-                    app.status_message = "Unsaved changes! Press Ctrl+Q again to quit without saving, or :wq to save and quit".to_string();
-                    app.confirm_quit = true;
-                    continue;
-                }
-            }
-
-            // Reset confirm_quit on any other key
-            app.confirm_quit = false;
-
-            if let Some(action) = translate(app.keymap, app.mode, key) {
+            if let Some(action) = translate(&app.keymap, app.mode, key) {
                 if apply_action(app, action, key) == ApplyResult::Quit {
                     return Ok(());
                 }

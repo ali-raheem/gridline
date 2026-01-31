@@ -2,7 +2,6 @@
 
 use super::app::{App, Mode};
 use super::help::{get_commands_help, get_help_text};
-use super::keymap::Keymap;
 use gridline_engine::engine::CellRef;
 use gridline_engine::plot::{PLOT_PREFIX, PlotData, PlotKind, PlotSpec, parse_plot_spec};
 use ratatui::{
@@ -361,14 +360,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         "[New File]".to_string()
     };
 
-    let help = match app.keymap {
-        Keymap::Vim => {
-            "hjkl:move  i:edit  v:visual  y:yank  p:paste  P:plot  +/-:colwidth  G:last  :w:save  :q:quit"
-        }
-        Keymap::Emacs => {
-            "C-n/p/f/b:move  Enter:edit  M-x:cmd  C-s:save  M-w:copy  C-y:paste  C-SPC:mark  C-g:cancel  M-p:plot"
-        }
-    };
+    let help = app.keymap.status_hint();
 
     let status = if !app.status_message.is_empty() {
         app.status_message.clone()
@@ -403,7 +395,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     // Combine keybindings and commands help
     let mut lines: Vec<Line> = Vec::new();
 
-    for text in get_help_text(app.keymap) {
+    for text in get_help_text(&app.keymap) {
         let style = if text.starts_with("===") {
             Style::default()
                 .fg(Color::Cyan)

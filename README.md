@@ -13,7 +13,8 @@ What you get (today):
 - A1-style references in formulas (`=A1 + B2`) and range functions (`=SUM(A1:B5)`)
 - Dependency tracking and recalculation
 - Load/reload user functions from a `.rhai` file (`-f` at startup, `:source` at runtime)
-- Two keymaps: `vim` (default) and `emacs`
+- Vim keybindings by default, optional Emacs keymap
+- Custom keymaps via TOML (optional override)
 - Plain text storage format (one cell per line)
 - Simple plotting in a modal (bar/line/scatter)
 
@@ -61,15 +62,21 @@ cargo run
 Open an example file:
 
 ```bash
-cargo run -- examples/test.grid
+cargo run -- examples/plot.grid
 ```
 
 Load custom Rhai functions at startup (can specify multiple files):
 
 ```bash
-cargo run -- -f examples/functions.rhai examples/test.grid
-cargo run -- -f lib1.rhai -f lib2.rhai examples/test.grid
+cargo run -- -f examples/functions.rhai examples/plot.grid
+cargo run -- -f lib1.rhai -f lib2.rhai examples/plot.grid
 ```
+
+Auto-load a default functions file if present:
+- config directory `gridline/default.rhai` (platform-specific)
+  - Linux: `~/.config/gridline/default.rhai`
+  - macOS: `~/Library/Application Support/gridline/default.rhai`
+  - Windows: `%APPDATA%\\gridline\\default.rhai`
 
 Load or reload functions at runtime:
 
@@ -189,7 +196,19 @@ Select keybindings:
 ```bash
 gridline --keymap vim
 gridline --keymap emacs
+gridline --keymap vim --keymap-file /path/to/keymaps.toml
 ```
+
+Keymap files (optional):
+- Default location: config directory `gridline/keymaps.toml` (platform-specific)
+- Override with `--keymap-file <path>`
+- If a keymap name is not found in the file, Gridline falls back to the built-in map (`vim` or `emacs`)
+  - Linux: `~/.config/gridline/keymaps.toml`
+  - macOS: `~/Library/Application Support/gridline/keymaps.toml`
+  - Windows: `%APPDATA%\\gridline\\keymaps.toml`
+
+Sample keymap file:
+- `docs/keymaps.toml`
 
 Status bar has an always-on cheat sheet, but the core controls are:
 
@@ -201,7 +220,7 @@ Vim:
 Emacs:
 - `C-n/p/f/b` move, `Enter` edit, `C-g` cancel
 - `C-SPC` set mark (visual), `M-w` copy, `C-y` paste
-- `C-s` save
+- `M-x` command mode, `:w` save, `:q` quit
 
 ## File Format 📝
 

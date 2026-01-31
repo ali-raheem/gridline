@@ -3,6 +3,7 @@ A1: =(1..=100).SPILL()
 B1: =VEC(A100:A1).map(|x| x * RAND())
 C1: =SCATTER(A1:B100, "Inverse Correlation", "X", "X*RAND()")
 D1: =BARCHART(B1:B100)
+E1: =LINECHART(B1:B100)
 G1: "Round(B)"
 G2: =VEC(B1:B10).map(|x| round(x))
 H2: =VEC(B1:B10).map(|x| floor(x))

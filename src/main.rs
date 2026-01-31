@@ -16,7 +16,8 @@ fn print_usage() {
     eprintln!("Options:");
     eprintln!("  -f, --functions <FILE>    Load custom Rhai functions (can be repeated)");
     eprintln!("  -o, --output <FILE>       Export to markdown file (non-interactive)");
-    eprintln!("  --keymap <vim|emacs>      Select keybindings (default: vim)");
+    eprintln!("  --keymap <name>           Select keybindings (default: vim)");
+    eprintln!("  --keymap-file <path>      Load keybindings from TOML file");
     eprintln!("  -h, --help                Print help");
 }
 
@@ -26,7 +27,8 @@ fn main() {
     let mut file_path: Option<PathBuf> = None;
     let mut functions_files: Vec<PathBuf> = Vec::new();
     let mut output_file: Option<PathBuf> = None;
-    let mut keymap: tui::Keymap = tui::Keymap::Vim;
+    let mut keymap_name: Option<String> = None;
+    let mut keymap_file: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -54,14 +56,18 @@ fn main() {
             "--keymap" => {
                 i += 1;
                 if i >= args.len() {
-                    eprintln!("Error: --keymap requires a value (vim|emacs)");
+                    eprintln!("Error: --keymap requires a value");
                     std::process::exit(1);
                 }
-                let Some(k) = tui::Keymap::parse(&args[i]) else {
-                    eprintln!("Error: Invalid keymap: {} (expected vim|emacs)", args[i]);
+                keymap_name = Some(args[i].to_string());
+            }
+            "--keymap-file" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("Error: --keymap-file requires a file path");
                     std::process::exit(1);
-                };
-                keymap = k;
+                }
+                keymap_file = Some(PathBuf::from(&args[i]));
             }
             arg if arg.starts_with('-') => {
                 eprintln!("Error: Unknown option: {}", arg);
@@ -79,6 +85,11 @@ fn main() {
             }
         }
         i += 1;
+    }
+
+    let (keymap, warnings) = tui::load_keymap(keymap_name.as_deref(), keymap_file.as_ref());
+    for warning in warnings {
+        eprintln!("Warning: {}", warning);
     }
 
     let mut app = match tui::App::with_file(file_path, functions_files, keymap) {
