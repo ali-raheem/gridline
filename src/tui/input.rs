@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::prelude::*;
 use std::io;
 
@@ -12,6 +12,11 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
         terminal.draw(|f| ui::draw(f, app))?;
 
         if let Event::Key(key) = event::read()? {
+            // Only process key press events (Windows reports Press + Release)
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
             // Plot modal takes over input
             if app.plot_modal.is_some() {
                 match key.code {

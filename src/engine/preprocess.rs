@@ -173,6 +173,30 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
 /// Typed refs like "@A1" become "value(0, 0)" (returns Dynamic).
 /// Also transforms range functions like SUM(A1:B5, ...) into sum_range(0, 0, 4, 1, ...).
 pub fn preprocess_script(script: &str) -> String {
+    preprocess_script_with_context(script, None)
+}
+
+/// Preprocess script with optional current cell context for ROW()/COL().
+/// When context is provided, ROW() and COL() are replaced with 1-based row/col values.
+pub fn preprocess_script_with_context(script: &str, context: Option<&CellRef>) -> String {
+    // First, replace ROW() and COL() if context is provided
+    let script = if let Some(cell_ref) = context {
+        let row_re = Regex::new(r"\bROW\(\s*\)").unwrap();
+        let col_re = Regex::new(r"\bCOL\(\s*\)").unwrap();
+        let script = row_re
+            .replace_all(script, (cell_ref.row + 1).to_string())
+            .to_string();
+        col_re
+            .replace_all(&script, (cell_ref.col + 1).to_string())
+            .to_string()
+    } else {
+        script.to_string()
+    };
+
+    preprocess_script_inner(&script)
+}
+
+fn preprocess_script_inner(script: &str) -> String {
     let with_ranges = crate::builtins::range_fn_re()
         .replace_all(script, |caps: &regex::Captures| {
             let start_ref = &caps[2];

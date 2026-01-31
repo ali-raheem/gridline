@@ -14,7 +14,8 @@ fn print_usage() {
     eprintln!("  [FILE]                    Spreadsheet file to open (.grd)");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  -f, --functions <FILE>    Load custom Rhai functions from file");
+    eprintln!("  -f, --functions <FILE>    Load custom Rhai functions (can be repeated)");
+    eprintln!("  -o, --output <FILE>       Export to markdown file (non-interactive)");
     eprintln!("  --keymap <vim|emacs>      Select keybindings (default: vim)");
     eprintln!("  -h, --help                Print help");
 }
@@ -23,7 +24,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     let mut file_path: Option<PathBuf> = None;
-    let mut functions_file: Option<PathBuf> = None;
+    let mut functions_files: Vec<PathBuf> = Vec::new();
+    let mut output_file: Option<PathBuf> = None;
     let mut keymap: tui::Keymap = tui::Keymap::Vim;
 
     let mut i = 1;
@@ -39,7 +41,15 @@ fn main() {
                     eprintln!("Error: --functions requires a file path");
                     std::process::exit(1);
                 }
-                functions_file = Some(PathBuf::from(&args[i]));
+                functions_files.push(PathBuf::from(&args[i]));
+            }
+            "-o" | "--output" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("Error: --output requires a file path");
+                    std::process::exit(1);
+                }
+                output_file = Some(PathBuf::from(&args[i]));
             }
             "--keymap" => {
                 i += 1;
@@ -71,7 +81,7 @@ fn main() {
         i += 1;
     }
 
-    let mut app = match tui::App::with_file(file_path, functions_file, keymap) {
+    let mut app = match tui::App::with_file(file_path, functions_files, keymap) {
         Ok(app) => app,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -79,8 +89,16 @@ fn main() {
         }
     };
 
-    if let Err(e) = tui::run(&mut app) {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
+    if let Some(output_path) = output_file {
+        if let Err(e) = storage::write_markdown(&output_path, &mut app) {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+        println!("Exported to {}", output_path.display());
+    } else {
+        if let Err(e) = tui::run(&mut app) {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
     }
 }

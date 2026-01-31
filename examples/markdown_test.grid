@@ -1,0 +1,26 @@
+# Gridline Spreadsheet
+A1: =(10..=20).SPILL()
+B1: "stdev()"
+C1: =stdev(VEC(A1:A11))
+D1: 1234.567
+E1: =format_currency(D1, 2)
+F1: =format_currency(1234.567,2)
+G1: 0.98
+H1: =format_percent(G1, 2)
+B2: "median()"
+C2: =median(VEC(A1:A11))
+B3: "running_sum"
+C3: =running_sum(VEC(A1:A11)).SPILL()
+D3: "stdevp"
+E3: =stdevp(VEC(A1:A11))
+D4: "var"
+E4: =variance(VEC(A1:A11))
+A16: "mortage principle"
+B16: 435999
+C16: "monthly"
+D16: =pmt(B17/12, B18*12, B16)
+E16: =D16/2
+A17: "rate"
+B17: 0.0423
+A18: "years"
+B18: 30

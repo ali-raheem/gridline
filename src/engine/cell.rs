@@ -116,3 +116,8 @@ pub type Grid = DashMap<CellRef, Cell>;
 /// Thread-safe storage for spill cell values.
 /// Maps cell positions to their computed Dynamic values.
 pub type SpillMap = DashMap<CellRef, rhai::Dynamic>;
+
+/// Thread-safe storage for computed formula cell values.
+/// Maps cell positions to their evaluated Dynamic values.
+/// This allows cell references to use pre-computed values instead of re-evaluating.
+pub type ComputedMap = DashMap<CellRef, rhai::Dynamic>;

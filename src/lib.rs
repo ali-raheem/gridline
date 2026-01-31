@@ -6,7 +6,7 @@ pub mod plot;
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::*;
+    use crate::engine::{*, preprocess_script_with_context};
     use dashmap::DashMap;
     use std::sync::Arc;
 
@@ -99,6 +99,43 @@ mod tests {
     fn test_preprocess_script_preserves_other_content() {
         assert_eq!(preprocess_script("A1 + 10"), "cell(0, 0) + 10");
         assert_eq!(preprocess_script("print(A1)"), "print(cell(0, 0))");
+    }
+
+    #[test]
+    fn test_preprocess_row_col_functions() {
+        // ROW() and COL() are replaced with 1-based values when context is provided
+        let cell = CellRef::new(5, 3); // Row 5, Col 3 (0-indexed) => Row 6, Col 4 (1-indexed)
+
+        assert_eq!(
+            preprocess_script_with_context("ROW()", Some(&cell)),
+            "6"
+        );
+        assert_eq!(
+            preprocess_script_with_context("COL()", Some(&cell)),
+            "4"
+        );
+        assert_eq!(
+            preprocess_script_with_context("ROW() + COL()", Some(&cell)),
+            "6 + 4"
+        );
+        // Works with other formula content
+        assert_eq!(
+            preprocess_script_with_context("A1 + ROW()", Some(&cell)),
+            "cell(0, 0) + 6"
+        );
+    }
+
+    #[test]
+    fn test_preprocess_row_col_without_context() {
+        // Without context, ROW() and COL() are left as-is
+        assert_eq!(
+            preprocess_script_with_context("ROW()", None),
+            "ROW()"
+        );
+        assert_eq!(
+            preprocess_script_with_context("COL()", None),
+            "COL()"
+        );
     }
 
     #[test]

@@ -53,8 +53,15 @@ fn draw_formula_bar(f: &mut Frame, app: &App, area: Rect) {
     let cell_name = format!("{}", cell_ref);
 
     let content = match app.mode {
-        Mode::Edit => format!("{}: {}_", cell_name, app.edit_buffer),
-        Mode::Command => format!(":{}_", app.command_buffer),
+        Mode::Edit => {
+            // Insert cursor marker at cursor position
+            let (before, after) = app.edit_buffer.split_at(app.edit_cursor);
+            format!("{}: {}│{}", cell_name, before, after)
+        }
+        Mode::Command => {
+            let (before, after) = app.command_buffer.split_at(app.command_cursor);
+            format!(":{}│{}", before, after)
+        }
         Mode::Visual => {
             if let Some(range) = app.get_selection_range_string() {
                 format!("{} ({})", cell_name, range)

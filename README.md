@@ -64,16 +64,18 @@ Open an example file:
 cargo run -- examples/test.grid
 ```
 
-Load custom Rhai functions at startup:
+Load custom Rhai functions at startup (can specify multiple files):
 
 ```bash
 cargo run -- -f examples/functions.rhai examples/test.grid
+cargo run -- -f lib1.rhai -f lib2.rhai examples/test.grid
 ```
 
-Reload / load functions at runtime:
+Load or reload functions at runtime:
 
 ```text
 :source examples/functions.rhai
+:so                                 # reload all loaded files
 ```
 
 ## Cell Input Rules 🧾
@@ -119,10 +121,14 @@ A1: =len(@B1)
 
 Built-in range functions (ALL CAPS):
 - `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`
+- `SUMIF(range, |x| condition)` - sum values where predicate is true
+- `COUNTIF(range, |x| condition)` - count cells where predicate is true
 - `BARCHART`, `LINECHART`, `SCATTER`
 - `VEC` (convert a range to an array; respects direction: `VEC(A3:A1)` returns `[A3, A2, A1]`)
 
 Other built-ins:
+- `ROW()` - current cell's row (1-indexed)
+- `COL()` - current cell's column (1-indexed)
 - `RAND()` - random float in `[0.0, 1.0)`
 - `RANDINT(min, max)` - random integer in `[min, max]` inclusive
 

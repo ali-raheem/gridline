@@ -8,9 +8,9 @@
 use crate::error::Result;
 use crate::storage::{parse_csv, parse_grd, write_csv, write_grd};
 use gridline_engine::engine::{
-    AST, Cell, CellRef, CellType, Grid, ShiftOperation, SpillMap,
+    AST, Cell, CellRef, CellType, ComputedMap, Grid, ShiftOperation, SpillMap,
     create_engine_with_functions_and_spill, detect_cycle, eval_with_functions, format_dynamic,
-    format_number, preprocess_script, shift_formula_references,
+    format_number, preprocess_script_with_context, shift_formula_references,
 };
 use gridline_engine::plot::{PlotSpec, parse_plot_spec};
 use rhai::{Dynamic, Engine};
@@ -98,8 +98,12 @@ pub struct App {
     pub mode: Mode,
     /// Edit buffer for cell editing
     pub edit_buffer: String,
+    /// Cursor position within edit buffer (byte offset)
+    pub edit_cursor: usize,
     /// Command buffer for command mode
     pub command_buffer: String,
+    /// Cursor position within command buffer (byte offset)
+    pub command_cursor: usize,
     /// Current file path
     pub file_path: Option<PathBuf>,
     /// Whether the grid has been modified
@@ -120,9 +124,9 @@ pub struct App {
     pub clipboard: Option<Clipboard>,
     /// Per-column widths (column index -> width). Default is col_width.
     pub column_widths: HashMap<usize, usize>,
-    /// Path to custom Rhai functions file
-    pub functions_file: Option<PathBuf>,
-    /// Cached custom functions script content
+    /// Paths to custom Rhai functions files
+    pub functions_files: Vec<PathBuf>,
+    /// Cached custom functions script content (concatenated from all files)
     pub custom_functions: Option<String>,
     /// Compiled custom functions AST
     pub custom_ast: Option<AST>,
@@ -143,6 +147,9 @@ pub struct App {
 
     /// Shared spill map for computed spill values (accessible by engine builtins)
     pub spill_map: Arc<SpillMap>,
+
+    /// Shared computed map for formula cell values (accessible by engine builtins)
+    pub computed_map: Arc<ComputedMap>,
 }
 
 impl App {
@@ -150,8 +157,13 @@ impl App {
     pub fn new() -> Self {
         let grid = Arc::new(Grid::new());
         let spill_map = Arc::new(SpillMap::new());
-        let (engine, _, _) =
-            create_engine_with_functions_and_spill(Arc::clone(&grid), Arc::clone(&spill_map), None);
+        let computed_map = Arc::new(ComputedMap::new());
+        let (engine, _, _) = create_engine_with_functions_and_spill(
+            Arc::clone(&grid),
+            Arc::clone(&spill_map),
+            Arc::clone(&computed_map),
+            None,
+        );
 
         App {
             grid,
@@ -166,7 +178,9 @@ impl App {
             max_rows: 1000,
             mode: Mode::Normal,
             edit_buffer: String::new(),
+            edit_cursor: 0,
             command_buffer: String::new(),
+            command_cursor: 0,
             file_path: None,
             modified: false,
             status_message: String::new(),
@@ -177,7 +191,7 @@ impl App {
             selection_anchor: None,
             clipboard: None,
             column_widths: HashMap::new(),
-            functions_file: None,
+            functions_files: Vec::new(),
             custom_functions: None,
             custom_ast: None,
             dependents: HashMap::new(),
@@ -186,6 +200,7 @@ impl App {
             keymap: Keymap::Vim,
             spill_sources: HashMap::new(),
             spill_map,
+            computed_map,
         }
     }
 
@@ -211,14 +226,14 @@ impl App {
     /// Create app and load file if provided
     pub fn with_file(
         path: Option<PathBuf>,
-        functions_file: Option<PathBuf>,
+        functions_files: Vec<PathBuf>,
         keymap: Keymap,
     ) -> Result<Self> {
         let mut app = Self::new();
         app.keymap = keymap;
 
         // Load custom functions if specified
-        if let Some(ref func_path) = functions_file {
+        for func_path in &functions_files {
             app.load_functions(func_path);
         }
 
@@ -228,12 +243,25 @@ impl App {
         Ok(app)
     }
 
-    /// Load custom Rhai functions from a file
+    /// Load custom Rhai functions from a file (appends to existing functions)
     pub fn load_functions(&mut self, path: &std::path::Path) {
         match fs::read_to_string(path) {
             Ok(content) => {
-                self.functions_file = Some(path.to_path_buf());
-                self.custom_functions = Some(content);
+                // Add to list if not already present
+                let path_buf = path.to_path_buf();
+                if !self.functions_files.contains(&path_buf) {
+                    self.functions_files.push(path_buf);
+                }
+                // Concatenate with existing functions
+                match &mut self.custom_functions {
+                    Some(existing) => {
+                        existing.push_str("\n\n");
+                        existing.push_str(&content);
+                    }
+                    None => {
+                        self.custom_functions = Some(content);
+                    }
+                }
                 self.recreate_engine();
                 if self.status_message.starts_with("Error") {
                     // Error message already set by recreate_engine
@@ -247,12 +275,18 @@ impl App {
         }
     }
 
-    /// Reload custom functions from the current functions file
+    /// Reload all custom functions from the loaded files
     pub fn reload_functions(&mut self) {
-        if let Some(path) = self.functions_file.clone() {
-            self.load_functions(&path);
-        } else {
+        if self.functions_files.is_empty() {
             self.status_message = "No functions file loaded".to_string();
+            return;
+        }
+        // Re-read all files
+        let paths = self.functions_files.clone();
+        self.functions_files.clear();
+        self.custom_functions = None;
+        for path in paths {
+            self.load_functions(&path);
         }
     }
 
@@ -261,6 +295,7 @@ impl App {
         let (engine, ast, error) = create_engine_with_functions_and_spill(
             Arc::clone(&self.grid),
             Arc::clone(&self.spill_map),
+            Arc::clone(&self.computed_map),
             self.custom_functions.as_deref(),
         );
         self.engine = engine;
@@ -304,6 +339,8 @@ impl App {
                         cell.dirty = true;
                         cell.cached_value = None;
                     }
+                    // Clear computed value so it will be re-evaluated
+                    self.computed_map.remove(&dep);
                     // Track spills that need clearing
                     if self.spill_map.contains_key(&dep) {
                         spills_to_clear.push(dep.clone());
@@ -360,6 +397,7 @@ impl App {
         } else {
             String::new()
         };
+        self.edit_cursor = self.edit_buffer.len(); // Cursor at end
         self.mode = Mode::Edit;
     }
 
@@ -400,6 +438,7 @@ impl App {
                 self.status_message = "Error: Circular dependency detected".to_string();
                 self.mode = Mode::Normal;
                 self.edit_buffer.clear();
+                self.edit_cursor = 0;
                 return;
             }
             // Cycle check passed, now push undo (restore old state first, then re-insert)
@@ -421,6 +460,7 @@ impl App {
         self.modified = true;
         self.mode = Mode::Normal;
         self.edit_buffer.clear();
+        self.edit_cursor = 0;
         self.status_message.clear();
 
         // Clear any spill originating from this cell
@@ -496,9 +536,10 @@ impl App {
             self.grid.insert(new_ref, new_cell);
         }
 
-        // Clear spill maps and rebuild
+        // Clear spill/computed maps and rebuild
         self.spill_sources.clear();
         self.spill_map.clear();
+        self.computed_map.clear();
         self.recreate_engine();
         self.modified = true;
         self.status_message = format!("Inserted row at {}", at_row + 1);
@@ -573,9 +614,10 @@ impl App {
             self.grid.insert(new_ref, new_cell);
         }
 
-        // Clear spill maps and rebuild
+        // Clear spill/computed maps and rebuild
         self.spill_sources.clear();
         self.spill_map.clear();
+        self.computed_map.clear();
         self.recreate_engine();
         self.modified = true;
         self.status_message = format!("Deleted row {}", at_row + 1);
@@ -643,9 +685,10 @@ impl App {
             self.column_widths.insert(col + 1, width);
         }
 
-        // Clear spill maps and rebuild
+        // Clear spill/computed maps and rebuild
         self.spill_sources.clear();
         self.spill_map.clear();
+        self.computed_map.clear();
         self.recreate_engine();
         self.modified = true;
         self.status_message = format!("Inserted column at {}", CellRef::col_to_letters(at_col));
@@ -735,9 +778,10 @@ impl App {
             self.column_widths.insert(col - 1, width);
         }
 
-        // Clear spill maps and rebuild
+        // Clear spill/computed maps and rebuild
         self.spill_sources.clear();
         self.spill_map.clear();
+        self.computed_map.clear();
         self.recreate_engine();
         self.modified = true;
         self.status_message = format!("Deleted column {}", CellRef::col_to_letters(at_col));
@@ -1003,7 +1047,7 @@ impl App {
                     return "#CYCLE!".to_string();
                 }
 
-                let processed = preprocess_script(s);
+                let processed = preprocess_script_with_context(s, Some(cell_ref));
                 drop(cell);
 
                 match eval_with_functions(&self.engine, &processed, self.custom_ast.as_ref()) {
@@ -1011,6 +1055,8 @@ impl App {
                         if result.is_array() {
                             self.handle_array_spill(cell_ref, result)
                         } else {
+                            // Store in computed_map so other formulas can reference this value
+                            self.computed_map.insert(cell_ref.clone(), result.clone());
                             let display = format_dynamic(&result);
                             // Cache the result and clear dirty flag
                             if let Some(mut cell) = self.grid.get_mut(cell_ref) {
@@ -1104,6 +1150,7 @@ impl App {
     pub fn execute_command(&mut self) -> bool {
         let cmd = self.command_buffer.trim().to_string();
         self.command_buffer.clear();
+        self.command_cursor = 0;
         self.mode = Mode::Normal;
 
         let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
@@ -1154,7 +1201,7 @@ impl App {
             "source" | "so" => {
                 if let Some(path) = args {
                     self.load_functions(&PathBuf::from(path));
-                } else if self.functions_file.is_some() {
+                } else if !self.functions_files.is_empty() {
                     self.reload_functions();
                 } else {
                     self.status_message =

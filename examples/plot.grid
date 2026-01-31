@@ -4,7 +4,6 @@ B1: =VEC(A100:A1).map(|x| x * RAND())
 C1: =SCATTER(A1:B100, "Inverse Correlation", "X", "X*RAND()")
 D1: =BARCHART(B1:B100)
 G1: "Round(B)"
-H1: "Floor(B)"
 G2: =VEC(B1:B10).map(|x| round(x))
 H2: =VEC(B1:B10).map(|x| floor(x))
 C3: =VEC(A1:A10).map(|x| if x % 2 == 0 { x } else { "" })
@@ -12,6 +11,6 @@ E5: =if B5 > 150 { "High" } else { "lol" }
 F5: =len(@E5)
 D6: "lol"
 E6: =len(@D6)
-F6: =len(E5)
+F6: =len(@E5)
 E7: =if B5 > 140 { 5 } else { 1}
 F7: =E6 * 2
