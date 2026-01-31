@@ -10,7 +10,7 @@ use super::{AST, Dynamic, Grid, ValueCache};
 
 /// Create a Rhai engine with built-ins registered.
 pub fn create_engine(grid: Grid) -> Engine {
-    let value_cache = ValueCache::new();
+    let value_cache = ValueCache::default();
     create_engine_with_cache(grid, value_cache)
 }
 
@@ -28,7 +28,7 @@ pub fn create_engine_with_functions(
     grid: Grid,
     custom_script: Option<&str>,
 ) -> (Engine, Option<AST>, Option<String>) {
-    let value_cache = ValueCache::new();
+    let value_cache = ValueCache::default();
     create_engine_with_functions_and_cache(grid, value_cache, custom_script)
 }
 

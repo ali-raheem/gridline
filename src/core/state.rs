@@ -53,7 +53,7 @@ impl Core {
     /// Create a new core state
     pub fn new() -> Self {
         let grid = Grid::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         let (engine, _, _) = create_engine_with_functions_and_cache(
             grid.clone(),
             value_cache.clone(),

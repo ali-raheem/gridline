@@ -1,0 +1,11 @@
+# Gridline Spreadsheet
+A1: =(1..=5).SPILL()
+B1: =VEC(A1:A5).map(|x| x * 2).SPILL()
+C1: =VEC(B1:B5).map(|x| x * 1.1).SPILL()
+D1: =SUM(B1:B5)
+E1: =VEC(C1:C5).map(|x| if x > 5 { 1 } else { 0 }).SPILL()
+F1: =VEC(C1:C5).map(|x| round(x)).SPILL()
+G1: =VEC(C1:C5).map(|x| floor(x)).SPILL()
+H1: =VEC(C1:C5).map(|x| if x > 5 { "Hi" } else { "" }).SPILL()
+I1: "hi"
+J1: =len(@I1)

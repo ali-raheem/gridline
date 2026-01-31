@@ -223,4 +223,5 @@ impl Core {
             let _ = self.get_cell_display(&cell_ref);
         }
     }
+
 }

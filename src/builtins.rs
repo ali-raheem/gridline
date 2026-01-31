@@ -647,7 +647,7 @@ mod tests {
         grid.insert(CellRef::new(1, 0), Cell::new_script("A1 + 1"));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         let result: f64 = engine.eval("sum_range(0, 0, 1, 0)").unwrap();
@@ -658,7 +658,7 @@ mod tests {
     fn test_plot_spec_builtins_return_tagged_string() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         let s: String = engine.eval("barchart_range(0, 0, 9, 0)").unwrap();
@@ -673,7 +673,7 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Test basic VEC returns array
@@ -691,7 +691,7 @@ mod tests {
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Test VEC with map transformation
@@ -709,7 +709,7 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(25.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Test VEC with filter
@@ -726,7 +726,7 @@ mod tests {
         let grid: Grid = DashMap::new();
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
 
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         // Simulate cached values at A2 and A3
         value_cache.insert(CellRef::new(1, 0), Dynamic::from(20.0_f64));
         value_cache.insert(CellRef::new(2, 0), Dynamic::from(30.0_f64));
@@ -750,7 +750,7 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on array returns the same array
@@ -765,7 +765,7 @@ mod tests {
     fn test_spill_exclusive_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on exclusive range (0..5) converts to array [0,1,2,3,4]
@@ -779,7 +779,7 @@ mod tests {
     fn test_spill_inclusive_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on inclusive range (0..=5) converts to array [0,1,2,3,4,5]
@@ -793,7 +793,7 @@ mod tests {
     fn test_spill_method_form() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Method form: (0..=3).SPILL()
@@ -811,7 +811,7 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Forward direction: A1:A3 = [10, 20, 30]
@@ -833,7 +833,7 @@ mod tests {
     fn test_rand_returns_value_in_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // RAND() should return a value in [0.0, 1.0)
@@ -847,7 +847,7 @@ mod tests {
     fn test_randint_returns_value_in_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // RANDINT(1, 6) should return a value in [1, 6]
@@ -866,7 +866,7 @@ mod tests {
         grid.insert(CellRef::new(3, 0), Cell::new_number(5.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Sum values > 10: 20 + 30 = 50
@@ -887,7 +887,7 @@ mod tests {
         grid.insert(CellRef::new(3, 0), Cell::new_number(5.0));
 
         let mut engine = Engine::new();
-        let value_cache = ValueCache::new();
+        let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
         // Count values > 10: 20, 30 = 2

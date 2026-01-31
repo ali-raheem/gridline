@@ -7,6 +7,7 @@
 //! - [`SpillMap`] - Thread-safe storage for array formula spill values
 
 use dashmap::DashMap;
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::cell_ref::CellRef;
@@ -118,7 +119,7 @@ pub type Grid = DashMap<CellRef, Cell>;
 /// This allows:
 /// - Cell references to use pre-computed values instead of re-evaluating
 /// - Array formulas to store spill values for chaining
-pub type ValueCache = DashMap<CellRef, rhai::Dynamic>;
+pub type ValueCache = Arc<DashMap<CellRef, rhai::Dynamic>>;
 
 // Legacy type aliases for backward compatibility during refactoring
 #[doc(hidden)]

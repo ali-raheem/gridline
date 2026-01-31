@@ -143,6 +143,34 @@ fn render_plot_ascii<W: Write>(w: &mut W, spec: &PlotSpec, app: &mut App) -> std
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::write_markdown;
+    use crate::tui::App;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn markdown_export_matches_expected_simple() {
+        let grid_path = Path::new("test/simple.grid");
+        let expected_path = Path::new("test/simple.expected.md");
+        let output_path = std::env::temp_dir().join("gridline_simple_export.md");
+
+        let (keymap, _warnings) = crate::tui::load_keymap(None, None);
+        let mut app =
+            App::with_file(Some(grid_path.to_path_buf()), Vec::new(), keymap).unwrap();
+
+        write_markdown(&output_path, &mut app).unwrap();
+
+        let actual = fs::read_to_string(&output_path).unwrap();
+        let expected = fs::read_to_string(expected_path).unwrap();
+
+        assert_eq!(actual, expected);
+
+        let _ = fs::remove_file(&output_path);
+    }
+}
+
 /// Render a simple ASCII bar chart
 fn render_bar_chart<W: Write>(w: &mut W, data: &PlotData) -> std::io::Result<()> {
     let max_y = data.y_range.1;
