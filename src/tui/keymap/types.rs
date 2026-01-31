@@ -17,6 +17,7 @@ pub enum Keymap {
 }
 
 impl Keymap {
+    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         match self {
             Keymap::Vim => "vim",

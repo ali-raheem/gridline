@@ -113,11 +113,15 @@ impl Cell {
 /// Thread-safe sparse grid storage.
 pub type Grid = DashMap<CellRef, Cell>;
 
-/// Thread-safe storage for spill cell values.
-/// Maps cell positions to their computed Dynamic values.
-pub type SpillMap = DashMap<CellRef, rhai::Dynamic>;
-
-/// Thread-safe storage for computed formula cell values.
+/// Thread-safe cache for computed cell values (both scalars and arrays).
 /// Maps cell positions to their evaluated Dynamic values.
-/// This allows cell references to use pre-computed values instead of re-evaluating.
-pub type ComputedMap = DashMap<CellRef, rhai::Dynamic>;
+/// This allows:
+/// - Cell references to use pre-computed values instead of re-evaluating
+/// - Array formulas to store spill values for chaining
+pub type ValueCache = DashMap<CellRef, rhai::Dynamic>;
+
+// Legacy type aliases for backward compatibility during refactoring
+#[doc(hidden)]
+pub type SpillMap = ValueCache;
+#[doc(hidden)]
+pub type ComputedMap = ValueCache;

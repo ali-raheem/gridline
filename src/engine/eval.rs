@@ -5,25 +5,19 @@
 //! of formulas with optional user-defined custom functions from external files.
 
 use rhai::Engine;
-use std::sync::Arc;
 
-use super::{AST, ComputedMap, Dynamic, Grid, SpillMap};
+use super::{AST, Dynamic, Grid, ValueCache};
 
 /// Create a Rhai engine with built-ins registered.
-pub fn create_engine(grid: Arc<Grid>) -> Engine {
-    let spill_map = Arc::new(SpillMap::new());
-    let computed_map = Arc::new(ComputedMap::new());
-    create_engine_with_spill(grid, spill_map, computed_map)
+pub fn create_engine(grid: Grid) -> Engine {
+    let value_cache = ValueCache::new();
+    create_engine_with_cache(grid, value_cache)
 }
 
-/// Create a Rhai engine with built-ins registered and shared maps.
-pub fn create_engine_with_spill(
-    grid: Arc<Grid>,
-    spill_map: Arc<SpillMap>,
-    computed_map: Arc<ComputedMap>,
-) -> Engine {
+/// Create a Rhai engine with built-ins registered and shared value cache.
+pub fn create_engine_with_cache(grid: Grid, value_cache: ValueCache) -> Engine {
     let mut engine = Engine::new();
-    crate::builtins::register_builtins(&mut engine, grid, spill_map, computed_map);
+    crate::builtins::register_builtins(&mut engine, grid, value_cache);
     engine
 }
 
@@ -31,23 +25,21 @@ pub fn create_engine_with_spill(
 /// Optionally compiles custom functions from the provided script.
 /// Returns the engine, compiled AST (if any), and any error message.
 pub fn create_engine_with_functions(
-    grid: Arc<Grid>,
+    grid: Grid,
     custom_script: Option<&str>,
 ) -> (Engine, Option<AST>, Option<String>) {
-    let spill_map = Arc::new(SpillMap::new());
-    let computed_map = Arc::new(ComputedMap::new());
-    create_engine_with_functions_and_spill(grid, spill_map, computed_map, custom_script)
+    let value_cache = ValueCache::new();
+    create_engine_with_functions_and_cache(grid, value_cache, custom_script)
 }
 
-/// Create a Rhai engine with built-ins, custom functions, and shared maps.
+/// Create a Rhai engine with built-ins, custom functions, and shared value cache.
 /// Returns the engine, compiled AST (if any), and any error message.
-pub fn create_engine_with_functions_and_spill(
-    grid: Arc<Grid>,
-    spill_map: Arc<SpillMap>,
-    computed_map: Arc<ComputedMap>,
+pub fn create_engine_with_functions_and_cache(
+    grid: Grid,
+    value_cache: ValueCache,
     custom_script: Option<&str>,
 ) -> (Engine, Option<AST>, Option<String>) {
-    let engine = create_engine_with_spill(grid, spill_map, computed_map);
+    let engine = create_engine_with_cache(grid, value_cache);
 
     let (ast, error) = if let Some(script) = custom_script {
         match engine.compile(script) {
@@ -62,20 +54,61 @@ pub fn create_engine_with_functions_and_spill(
 }
 
 /// Evaluate a formula, optionally with custom functions AST.
+///
+/// When custom functions are present, we need both the AST and the original script
+/// to properly evaluate closures. Closures need access to registered functions,
+/// which works better when evaluating as a script rather than merged ASTs.
 pub fn eval_with_functions(
     engine: &Engine,
     formula: &str,
     custom_ast: Option<&AST>,
 ) -> Result<Dynamic, String> {
-    if let Some(ast) = custom_ast {
-        match engine.compile(formula) {
-            Ok(formula_ast) => {
-                let merged = ast.clone().merge(&formula_ast);
-                engine.eval_ast(&merged).map_err(|e| e.to_string())
-            }
-            Err(e) => Err(e.to_string()),
-        }
+    if custom_ast.is_some() {
+        // For now, use simple AST merging
+        // TODO: This has issues with closures not accessing registered functions
+        let formula_ast = engine.compile(formula).map_err(|e| e.to_string())?;
+        let merged = custom_ast.unwrap().clone().merge(&formula_ast);
+        engine.eval_ast(&merged).map_err(|e| e.to_string())
     } else {
         engine.eval(formula).map_err(|e| e.to_string())
     }
+}
+
+/// Evaluate a formula with custom functions provided as script text.
+/// This version concatenates the scripts and evaluates them together,
+/// which properly handles closures accessing registered functions.
+pub fn eval_with_functions_script(
+    engine: &Engine,
+    formula: &str,
+    custom_script: Option<&str>,
+) -> Result<Dynamic, String> {
+    if let Some(script) = custom_script {
+        // Concatenate custom functions with formula and evaluate as one script
+        // This ensures closures can access both custom and registered functions
+        let combined = format!("{}\n{}", script, formula);
+        engine.eval(&combined).map_err(|e| e.to_string())
+    } else {
+        engine.eval(formula).map_err(|e| e.to_string())
+    }
+}
+
+// Backward compatibility aliases (deprecated)
+#[doc(hidden)]
+#[allow(dead_code)]
+pub fn create_engine_with_spill(
+    grid: Grid,
+    value_cache: ValueCache,
+    _deprecated: ValueCache,
+) -> Engine {
+    create_engine_with_cache(grid, value_cache)
+}
+
+#[doc(hidden)]
+#[allow(dead_code)]
+pub fn create_engine_with_functions_and_spill(
+    grid: Grid,
+    value_cache: ValueCache,
+    custom_script: Option<&str>,
+) -> (Engine, Option<AST>, Option<String>) {
+    create_engine_with_functions_and_cache(grid, value_cache, custom_script)
 }

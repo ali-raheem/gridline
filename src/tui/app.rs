@@ -101,6 +101,8 @@ pub struct App {
     /// Active keymap
     pub keymap: Keymap,
 
+    /// Status message to display
+    pub status_message: String,
 }
 
 impl App {
@@ -130,6 +132,7 @@ impl App {
             plot_modal: None,
             help_modal: false,
             keymap: Keymap::Vim,
+            status_message: String::new(),
         }
     }
 
@@ -146,9 +149,9 @@ impl App {
         let display = self.core.get_cell_display(&cell_ref);
         if let Some(spec) = parse_plot_spec(&display) {
             self.plot_modal = Some(spec);
-            self.core.status_message.clear();
+            self.status_message.clear();
         } else {
-            self.core.status_message = "Error: Not a plot cell".to_string();
+            self.status_message = "Error: Not a plot cell".to_string();
         }
     }
 
@@ -166,12 +169,18 @@ impl App {
 
     /// Load custom Rhai functions from a file (appends to existing functions)
     pub fn load_functions(&mut self, path: &std::path::Path) {
-        self.core.load_functions(path);
+        match self.core.load_functions(path) {
+            Ok(p) => self.status_message = format!("Loaded functions from {}", p.display()),
+            Err(e) => self.status_message = format!("Error: {}", e),
+        }
     }
 
     /// Reload all custom functions from the loaded files
     pub fn reload_functions(&mut self) {
-        self.core.reload_functions();
+        match self.core.reload_functions() {
+            Ok(count) => self.status_message = format!("Reloaded {} function file(s)", count),
+            Err(e) => self.status_message = format!("Error: {}", e),
+        }
     }
 
     /// Get the current cell reference
@@ -222,7 +231,11 @@ impl App {
     /// Commit the current edit
     pub fn commit_edit(&mut self) {
         let cell_ref = self.current_cell_ref();
-        let _ = self.core.set_cell_from_input(cell_ref, &self.edit_buffer);
+        if let Err(e) = self.core.set_cell_from_input(cell_ref, &self.edit_buffer) {
+            self.status_message = format!("Error: {}", e);
+        } else {
+            self.status_message.clear();
+        }
         self.mode = Mode::Normal;
         self.edit_buffer.clear();
         self.edit_cursor = 0;
@@ -238,18 +251,21 @@ impl App {
     pub fn insert_row(&mut self) {
         let at_row = self.cursor_row;
         self.core.insert_row(at_row);
+        self.status_message = format!("Inserted row at {}", at_row + 1);
     }
 
     /// Delete the current row
     pub fn delete_row(&mut self) {
         let at_row = self.cursor_row;
         self.core.delete_row(at_row);
+        self.status_message = format!("Deleted row {}", at_row + 1);
     }
 
     /// Insert a column left of the cursor position
     pub fn insert_column(&mut self) {
         let at_col = self.cursor_col;
         self.core.insert_column(at_col);
+        self.status_message = format!("Inserted column at {}", CellRef::col_to_letters(at_col));
 
         // Shift column widths (UI state)
         let widths_to_shift: Vec<(usize, usize)> = self
@@ -271,6 +287,7 @@ impl App {
     pub fn delete_column(&mut self) {
         let at_col = self.cursor_col;
         self.core.delete_column(at_col);
+        self.status_message = format!("Deleted column {}", CellRef::col_to_letters(at_col));
 
         // Shift column widths (UI state)
         self.column_widths.remove(&at_col);
@@ -291,26 +308,32 @@ impl App {
 
     /// Undo the last action
     pub fn undo(&mut self) {
-        self.core.undo();
+        match self.core.undo() {
+            Ok(()) => self.status_message = "Undone".to_string(),
+            Err(e) => self.status_message = e.to_string(),
+        }
     }
 
     /// Redo the last undone action
     pub fn redo(&mut self) {
-        self.core.redo();
+        match self.core.redo() {
+            Ok(()) => self.status_message = "Redone".to_string(),
+            Err(e) => self.status_message = e.to_string(),
+        }
     }
 
     /// Enter visual mode, anchoring selection at current cursor
     pub fn enter_visual_mode(&mut self) {
         self.selection_anchor = Some((self.cursor_row, self.cursor_col));
         self.mode = Mode::Visual;
-        self.core.status_message = "-- VISUAL --".to_string();
+        self.status_message = "-- VISUAL --".to_string();
     }
 
     /// Exit visual mode
     pub fn exit_visual_mode(&mut self) {
         self.selection_anchor = None;
         self.mode = Mode::Normal;
-        self.core.status_message.clear();
+        self.status_message.clear();
     }
 
     /// Get current selection bounds (top_left, bottom_right) if in visual mode
@@ -352,7 +375,7 @@ impl App {
                 width,
                 height,
             });
-            self.core.status_message = format!("Yanked {}x{} cells", height, width);
+            self.status_message = format!("Yanked {}x{} cells", height, width);
             self.exit_visual_mode();
         } else {
             // Yank single cell
@@ -365,14 +388,14 @@ impl App {
                 width: 1,
                 height: 1,
             });
-            self.core.status_message = "Yanked cell".to_string();
+            self.status_message = "Yanked cell".to_string();
         }
     }
 
     /// Paste clipboard at current cursor position
     pub fn paste(&mut self) {
         let Some(clipboard) = &self.clipboard else {
-            self.core.status_message = "Nothing to paste".to_string();
+            self.status_message = "Nothing to paste".to_string();
             return;
         };
 
@@ -381,7 +404,7 @@ impl App {
         let clipboard_cells = clipboard.cells.clone();
 
         let pasted = self.core.paste_cells(base_row, base_col, &clipboard_cells);
-        self.core.status_message = format!("Pasted {} cells", pasted);
+        self.status_message = format!("Pasted {} cells", pasted);
     }
 
     /// Get width for a specific column
@@ -414,12 +437,12 @@ impl App {
                 self.cursor_col = cr.col;
                 self.cursor_row = cr.row;
                 self.update_viewport();
-                self.core.status_message = format!("Jumped to {}", cell_ref_str.to_uppercase());
+                self.status_message = format!("Jumped to {}", cell_ref_str.to_uppercase());
             } else {
-                self.core.status_message = "Cell out of range".to_string();
+                self.status_message = "Cell out of range".to_string();
             }
         } else {
-            self.core.status_message = format!("Invalid cell reference: {}", cell_ref_str);
+            self.status_message = format!("Invalid cell reference: {}", cell_ref_str);
         }
     }
 
@@ -460,7 +483,7 @@ impl App {
         match command {
             "q" => {
                 if self.core.modified {
-                    self.core.status_message =
+                    self.status_message =
                         "Unsaved changes! Use :q! to force quit or :wq to save and quit"
                             .to_string();
                     return false;
@@ -474,28 +497,29 @@ impl App {
                 if let Some(path) = args {
                     self.core.file_path = Some(PathBuf::from(path));
                 }
-                self.core.save_file();
+                self.save_file();
             }
             "wq" => {
-                self.core.save_file();
+                self.save_file();
                 if !self.core.modified {
                     return true;
                 }
             }
             "e" | "open" => {
                 if let Some(path) = args {
-                    if let Err(e) = self.core.load_file(&PathBuf::from(path)) {
-                        self.core.status_message = format!("Error: {}", e);
+                    match self.core.load_file(&PathBuf::from(path)) {
+                        Ok(()) => self.status_message = format!("Loaded {}", path),
+                        Err(e) => self.status_message = format!("Error: {}", e),
                     }
                 } else {
-                    self.core.status_message = "Usage: :e <path>".to_string();
+                    self.status_message = "Usage: :e <path>".to_string();
                 }
             }
             "goto" | "g" => {
                 if let Some(cell_ref) = args {
                     self.goto_cell(cell_ref);
                 } else {
-                    self.core.status_message = "Usage: :goto CELL (e.g., :goto A100)".to_string();
+                    self.status_message = "Usage: :goto CELL (e.g., :goto A100)".to_string();
                 }
             }
             "source" | "so" => {
@@ -504,7 +528,7 @@ impl App {
                 } else if !self.core.functions_files.is_empty() {
                     self.reload_functions();
                 } else {
-                    self.core.status_message =
+                    self.status_message =
                         "Usage: :source <file.rhai> (or :so to reload current)".to_string();
                 }
             }
@@ -516,12 +540,12 @@ impl App {
                             // :colwidth 15 - set current column
                             if let Ok(w) = parts[0].parse() {
                                 self.set_column_width(w);
-                                self.core.status_message = format!(
+                                self.status_message = format!(
                                     "Column width set to {}",
                                     self.get_column_width(self.cursor_col)
                                 );
                             } else {
-                                self.core.status_message = "Invalid width".to_string();
+                                self.status_message = "Invalid width".to_string();
                             }
                         }
                         2 => {
@@ -530,39 +554,39 @@ impl App {
                                 if let Ok(w) = parts[1].parse::<usize>() {
                                     let w = w.clamp(4, 50);
                                     self.column_widths.insert(col, w);
-                                    self.core.status_message = format!(
+                                    self.status_message = format!(
                                         "Column {} width set to {}",
                                         CellRef::col_to_letters(col),
                                         w
                                     );
                                 } else {
-                                    self.core.status_message = "Invalid width".to_string();
+                                    self.status_message = "Invalid width".to_string();
                                 }
                             } else {
-                                self.core.status_message = "Invalid column".to_string();
+                                self.status_message = "Invalid column".to_string();
                             }
                         }
                         _ => {
-                            self.core.status_message =
+                            self.status_message =
                                 "Usage: :colwidth [COL] WIDTH".to_string();
                         }
                     }
                 } else {
-                    self.core.status_message = "Usage: :colwidth [COL] WIDTH".to_string();
+                    self.status_message = "Usage: :colwidth [COL] WIDTH".to_string();
                 }
             }
             "import" => {
                 if let Some(path) = args {
                     self.import_csv(path);
                 } else {
-                    self.core.status_message = "Usage: :import <file.csv>".to_string();
+                    self.status_message = "Usage: :import <file.csv>".to_string();
                 }
             }
             "export" => {
                 if let Some(path) = args {
                     self.export_csv(path);
                 } else {
-                    self.core.status_message = "Usage: :export <file.csv>".to_string();
+                    self.status_message = "Usage: :export <file.csv>".to_string();
                 }
             }
             "ir" | "insertrow" => {
@@ -581,7 +605,7 @@ impl App {
                 self.help_modal = true;
             }
             _ => {
-                self.core.status_message = format!("Unknown command: {}", command);
+                self.status_message = format!("Unknown command: {}", command);
             }
         }
         false
@@ -589,23 +613,26 @@ impl App {
 
     /// Save to current file path
     pub fn save_file(&mut self) {
-        self.core.save_file();
-    }
-
-    /// Load from file
-    pub fn load_file(&mut self, path: &std::path::Path) -> Result<()> {
-        self.core.load_file(path)
+        match self.core.save_file() {
+            Ok(path) => self.status_message = format!("Saved to {}", path.display()),
+            Err(e) => self.status_message = format!("Error: {}", e),
+        }
     }
 
     /// Import CSV data starting at current cursor position
     fn import_csv(&mut self, path: &str) {
-        self.core
-            .import_csv(path, self.cursor_row, self.cursor_col);
+        match self.core.import_csv(path, self.cursor_row, self.cursor_col) {
+            Ok(count) => self.status_message = format!("Imported {} cells from {}", count, path),
+            Err(e) => self.status_message = format!("Error: {}", e),
+        }
     }
 
     /// Export grid to CSV file
     fn export_csv(&mut self, path: &str) {
-        self.core.export_csv(path, self.get_selection());
+        match self.core.export_csv(path, self.get_selection()) {
+            Ok(()) => self.status_message = format!("Exported to {}", path),
+            Err(e) => self.status_message = format!("Error: {}", e),
+        }
     }
 }
 

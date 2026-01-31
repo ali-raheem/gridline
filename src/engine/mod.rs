@@ -18,14 +18,20 @@ mod eval;
 mod format;
 mod preprocess;
 
-pub use cell::{Cell, CellType, ComputedMap, Grid, SpillMap};
+pub use cell::{Cell, CellType, Grid, ValueCache};
+// Legacy exports for backward compatibility
+#[allow(unused_imports)]
+pub use cell::{ComputedMap, SpillMap};
 pub use cell_ref::CellRef;
 pub use cycle::detect_cycle;
 pub use deps::{extract_dependencies, parse_range};
 pub use eval::{
-    create_engine, create_engine_with_functions, create_engine_with_functions_and_spill,
-    create_engine_with_spill, eval_with_functions,
+    create_engine, create_engine_with_cache, create_engine_with_functions,
+    create_engine_with_functions_and_cache, eval_with_functions, eval_with_functions_script,
 };
+// Legacy exports for backward compatibility
+#[allow(unused_imports)]
+pub use eval::{create_engine_with_functions_and_spill, create_engine_with_spill};
 pub use format::{format_dynamic, format_number};
 pub use preprocess::{ShiftOperation, preprocess_script, preprocess_script_with_context, shift_formula_references};
 

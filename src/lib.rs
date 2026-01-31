@@ -8,7 +8,6 @@ pub mod plot;
 mod tests {
     use crate::engine::{*, preprocess_script_with_context};
     use dashmap::DashMap;
-    use std::sync::Arc;
 
     #[test]
     fn test_from_str_single_letter_columns() {
@@ -270,7 +269,7 @@ mod tests {
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
-        let engine = create_engine(Arc::new(grid));
+        let engine = create_engine(grid);
 
         let result: f64 = engine.eval("sum_range(0, 0, 2, 0)").unwrap();
         assert_eq!(result, 60.0);
@@ -297,7 +296,7 @@ mod tests {
             Cell::new_script("if C1 > 100 { \"expensive\" } else { \"cheap\" }"),
         ); // B1
 
-        let engine = create_engine(Arc::new(grid));
+        let engine = create_engine(grid);
         let processed = preprocess_script("len(@B1)");
         let result = eval_with_functions(&engine, &processed, None).unwrap();
         assert_eq!(result.as_int().unwrap(), 9);
@@ -321,7 +320,7 @@ mod tests {
         "#;
 
         let (engine, custom_ast, error) =
-            create_engine_with_functions(Arc::new(grid), Some(custom_script));
+            create_engine_with_functions(grid, Some(custom_script));
         assert!(error.is_none());
         assert!(custom_ast.is_some());
 
@@ -337,7 +336,7 @@ mod tests {
         let grid: Grid = DashMap::new();
         let bad_script = "fn broken( { }";
 
-        let (_engine, _ast, error) = create_engine_with_functions(Arc::new(grid), Some(bad_script));
+        let (_engine, _ast, error) = create_engine_with_functions(grid, Some(bad_script));
         assert!(error.is_some());
         assert!(error.unwrap().contains("Error"));
     }

@@ -6,12 +6,12 @@
 //! - If you add a new built-in range function, update `RANGE_BUILTINS` and
 //!   register its implementation in `register_builtins`.
 
-use crate::engine::{CellRef, CellType, ComputedMap, Grid, SpillMap, preprocess_script};
+use crate::engine::{CellRef, CellType, Grid, ValueCache, preprocess_script};
 use crate::plot::{PlotKind, PlotSpec, format_plot_spec};
 use rand::Rng;
 use regex::Regex;
 use rhai::{Dynamic, Engine, FnPtr, NativeCallContext};
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 pub struct RangeBuiltin {
     pub sheet_name: &'static str,
@@ -160,39 +160,22 @@ fn make_plot_spec(
 }
 
 /// Register all built-in functions into the Rhai engine.
-pub fn register_builtins(
-    engine: &mut Engine,
-    grid: Arc<Grid>,
-    spill_map: Arc<SpillMap>,
-    computed_map: Arc<ComputedMap>,
-) {
+pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCache) {
     // cell(row, col): numeric value at cell (text/script -> NaN)
-    // Checks computed map and spill map first for pre-evaluated values
-    let grid_cell = Arc::clone(&grid);
-    let spill_cell = Arc::clone(&spill_map);
-    let computed_cell = Arc::clone(&computed_map);
+    // Checks value cache first for pre-evaluated values
+    let grid_cell = grid.clone();
+    let cache_cell = value_cache.clone();
     engine.register_fn(
         "cell",
         move |ctx: NativeCallContext, row: i64, col: i64| -> f64 {
             let cell_ref = CellRef::new(row as usize, col as usize);
 
-            // Check computed map first (for formula cells with custom functions)
-            if let Some(computed_val) = computed_cell.get(&cell_ref) {
-                if let Ok(n) = computed_val.as_float() {
+            // Check value cache first (for pre-computed formulas and spills)
+            if let Some(cached_val) = cache_cell.get(&cell_ref) {
+                if let Ok(n) = cached_val.as_float() {
                     return n;
                 }
-                if let Ok(n) = computed_val.as_int() {
-                    return n as f64;
-                }
-                return f64::NAN;
-            }
-
-            // Check spill map (for array formula spills)
-            if let Some(spill_val) = spill_cell.get(&cell_ref) {
-                if let Ok(n) = spill_val.as_float() {
-                    return n;
-                }
-                if let Ok(n) = spill_val.as_int() {
+                if let Ok(n) = cached_val.as_int() {
                     return n as f64;
                 }
                 return f64::NAN;
@@ -216,24 +199,18 @@ pub fn register_builtins(
 
     // value(row, col): typed value at cell (number/text/bool) as Dynamic.
     // - Empty cells => "" (so things like `len(@A1)` behave intuitively)
-    // - Script cells => use computed value from computed_map, fall back to eval
-    // Checks computed map and spill map first for pre-evaluated values
-    let grid_value = Arc::clone(&grid);
-    let spill_value = Arc::clone(&spill_map);
-    let computed_value = Arc::clone(&computed_map);
+    // - Script cells => use cached value from value_cache, fall back to eval
+    // Checks value cache first for pre-evaluated values
+    let grid_value = grid.clone();
+    let cache_value = value_cache.clone();
     engine.register_fn(
         "value",
         move |ctx: NativeCallContext, row: i64, col: i64| -> Dynamic {
             let cell_ref = CellRef::new(row as usize, col as usize);
 
-            // Check computed map first (for formula cells with custom functions)
-            if let Some(computed_val) = computed_value.get(&cell_ref) {
-                return computed_val.clone();
-            }
-
-            // Check spill map (for array formula spills)
-            if let Some(spill_val) = spill_value.get(&cell_ref) {
-                return spill_val.clone();
+            // Check value cache first (for pre-computed formulas and array spills)
+            if let Some(cached_val) = cache_value.get(&cell_ref) {
+                return cached_val.clone();
             }
 
             let Some(entry) = grid_value.get(&cell_ref) else {
@@ -256,7 +233,7 @@ pub fn register_builtins(
     );
 
     // sum_range(r1, c1, r2, c2)
-    let grid_sum = Arc::clone(&grid);
+    let grid_sum = grid.clone();
     engine.register_fn(
         "sum_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -275,7 +252,7 @@ pub fn register_builtins(
     );
 
     // avg_range(r1, c1, r2, c2)
-    let grid_avg = Arc::clone(&grid);
+    let grid_avg = grid.clone();
     engine.register_fn(
         "avg_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -296,7 +273,7 @@ pub fn register_builtins(
     );
 
     // count_range(r1, c1, r2, c2): count non-empty
-    let grid_count = Arc::clone(&grid);
+    let grid_count = grid.clone();
     engine.register_fn(
         "count_range",
         move |_ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -320,7 +297,7 @@ pub fn register_builtins(
     );
 
     // min_range(r1, c1, r2, c2)
-    let grid_min = Arc::clone(&grid);
+    let grid_min = grid.clone();
     engine.register_fn(
         "min_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -346,7 +323,7 @@ pub fn register_builtins(
     );
 
     // max_range(r1, c1, r2, c2)
-    let grid_max = Arc::clone(&grid);
+    let grid_max = grid.clone();
     engine.register_fn(
         "max_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
@@ -479,8 +456,8 @@ pub fn register_builtins(
     // vec_range(r1, c1, r2, c2): returns array of cell values
     // Checks spill map first for spilled array values
     // Respects range direction: VEC(A3:A1) returns [A3, A2, A1]
-    let grid_vec = Arc::clone(&grid);
-    let spill_vec = Arc::clone(&spill_map);
+    let grid_vec = grid.clone();
+    let cache_vec = value_cache.clone();
     engine.register_fn(
         "vec_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> rhai::Array {
@@ -501,9 +478,9 @@ pub fn register_builtins(
                 for col in &cols {
                     let cell_ref = CellRef::new(*row, *col);
 
-                    // Check spill map first
-                    let val = if let Some(spill_val) = spill_vec.get(&cell_ref) {
-                        spill_val.clone()
+                    // Check value cache first
+                    let val = if let Some(cached_val) = cache_vec.get(&cell_ref) {
+                        cached_val.clone()
                     } else if let Some(entry) = grid_vec.get(&cell_ref) {
                         match &entry.contents {
                             CellType::Number(n) => Dynamic::from(*n),
@@ -547,8 +524,8 @@ pub fn register_builtins(
     });
 
     // SUMIF(r1, c1, r2, c2, predicate): sum values where predicate returns true
-    let grid_sumif = Arc::clone(&grid);
-    let spill_sumif = Arc::clone(&spill_map);
+    let grid_sumif = grid.clone();
+    let cache_sumif = value_cache.clone();
     engine.register_fn(
         "sumif_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64, pred: FnPtr| -> f64 {
@@ -562,8 +539,8 @@ pub fn register_builtins(
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(row, col);
 
-                    let val = if let Some(spill_val) = spill_sumif.get(&cell_ref) {
-                        spill_val.clone()
+                    let val = if let Some(cached_val) = cache_sumif.get(&cell_ref) {
+                        cached_val.clone()
                     } else if let Some(entry) = grid_sumif.get(&cell_ref) {
                         match &entry.contents {
                             CellType::Number(n) => Dynamic::from(*n),
@@ -597,8 +574,8 @@ pub fn register_builtins(
     );
 
     // COUNTIF(r1, c1, r2, c2, predicate): count cells where predicate returns true
-    let grid_countif = Arc::clone(&grid);
-    let spill_countif = Arc::clone(&spill_map);
+    let grid_countif = grid.clone();
+    let cache_countif = value_cache.clone();
     engine.register_fn(
         "countif_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64, pred: FnPtr| -> i64 {
@@ -612,8 +589,8 @@ pub fn register_builtins(
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(row, col);
 
-                    let val = if let Some(spill_val) = spill_countif.get(&cell_ref) {
-                        spill_val.clone()
+                    let val = if let Some(cached_val) = cache_countif.get(&cell_ref) {
+                        cached_val.clone()
                     } else if let Some(entry) = grid_countif.get(&cell_ref) {
                         match &entry.contents {
                             CellType::Number(n) => Dynamic::from(*n),
@@ -670,9 +647,8 @@ mod tests {
         grid.insert(CellRef::new(1, 0), Cell::new_script("A1 + 1"));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         let result: f64 = engine.eval("sum_range(0, 0, 1, 0)").unwrap();
         assert_eq!(result, 3.0);
@@ -682,9 +658,8 @@ mod tests {
     fn test_plot_spec_builtins_return_tagged_string() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         let s: String = engine.eval("barchart_range(0, 0, 9, 0)").unwrap();
         assert!(s.starts_with(crate::plot::PLOT_PREFIX));
@@ -698,9 +673,8 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Test basic VEC returns array
         let result: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
@@ -717,9 +691,8 @@ mod tests {
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Test VEC with map transformation
         let result: rhai::Array = engine.eval("vec_range(0, 0, 1, 0).map(|x| x * 2)").unwrap();
@@ -736,9 +709,8 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(25.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Test VEC with filter
         let result: rhai::Array = engine
@@ -750,20 +722,19 @@ mod tests {
     }
 
     #[test]
-    fn test_vec_range_reads_from_spill_map() {
+    fn test_vec_range_reads_from_value_cache() {
         let grid: Grid = DashMap::new();
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
 
-        let spill_map: SpillMap = DashMap::new();
-        // Simulate spill values at A2 and A3
-        spill_map.insert(CellRef::new(1, 0), Dynamic::from(20.0_f64));
-        spill_map.insert(CellRef::new(2, 0), Dynamic::from(30.0_f64));
-        let computed_map: ComputedMap = DashMap::new();
+        let value_cache = ValueCache::new();
+        // Simulate cached values at A2 and A3
+        value_cache.insert(CellRef::new(1, 0), Dynamic::from(20.0_f64));
+        value_cache.insert(CellRef::new(2, 0), Dynamic::from(30.0_f64));
 
         let mut engine = Engine::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        register_builtins(&mut engine, grid, value_cache);
 
-        // VEC should read from both grid and spill_map
+        // VEC should read from both grid and value_cache
         let result: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].clone().cast::<f64>(), 10.0);
@@ -779,9 +750,8 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on array returns the same array
         let result: rhai::Array = engine.eval("SPILL(vec_range(0, 0, 2, 0))").unwrap();
@@ -795,9 +765,8 @@ mod tests {
     fn test_spill_exclusive_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on exclusive range (0..5) converts to array [0,1,2,3,4]
         let result: rhai::Array = engine.eval("SPILL(0..5)").unwrap();
@@ -810,9 +779,8 @@ mod tests {
     fn test_spill_inclusive_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on inclusive range (0..=5) converts to array [0,1,2,3,4,5]
         let result: rhai::Array = engine.eval("SPILL(0..=5)").unwrap();
@@ -825,9 +793,8 @@ mod tests {
     fn test_spill_method_form() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Method form: (0..=3).SPILL()
         let result: rhai::Array = engine.eval("(0..=3).SPILL()").unwrap();
@@ -844,9 +811,8 @@ mod tests {
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Forward direction: A1:A3 = [10, 20, 30]
         let forward: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
@@ -867,9 +833,8 @@ mod tests {
     fn test_rand_returns_value_in_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // RAND() should return a value in [0.0, 1.0)
         for _ in 0..100 {
@@ -882,9 +847,8 @@ mod tests {
     fn test_randint_returns_value_in_range() {
         let grid: Grid = DashMap::new();
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // RANDINT(1, 6) should return a value in [1, 6]
         for _ in 0..100 {
@@ -902,9 +866,8 @@ mod tests {
         grid.insert(CellRef::new(3, 0), Cell::new_number(5.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Sum values > 10: 20 + 30 = 50
         let result: f64 = engine.eval("sumif_range(0, 0, 3, 0, |x| x > 10)").unwrap();
@@ -924,9 +887,8 @@ mod tests {
         grid.insert(CellRef::new(3, 0), Cell::new_number(5.0));
 
         let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        let computed_map: ComputedMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map), Arc::new(computed_map));
+        let value_cache = ValueCache::new();
+        register_builtins(&mut engine, grid, value_cache);
 
         // Count values > 10: 20, 30 = 2
         let result: i64 = engine.eval("countif_range(0, 0, 3, 0, |x| x > 10)").unwrap();

@@ -72,10 +72,6 @@ impl Core {
         let grid = parse_grd(path)?;
         self.grid = grid;
 
-        // Clear caches since we're loading a new grid
-        self.value_cache.clear();
-        self.spill_sources.clear();
-
         // Mark all script cells as dirty so they're re-evaluated with current custom functions
         for mut entry in self.grid.iter_mut() {
             if matches!(entry.contents, CellType::Script(_)) {
@@ -84,10 +80,7 @@ impl Core {
             }
         }
 
-        // Recreate engine because grid was replaced (builtins need new grid reference)
-        let _ = self.recreate_engine_with_functions();
-
-        // Rebuild dependencies
+        // Rebuild dependencies (engine already has references to grid/cache via DashMap)
         self.rebuild_dependents();
 
         // Pre-evaluate all cells in dependency order so computed values are ready
@@ -112,9 +105,7 @@ impl Core {
             self.grid.insert(cell_ref, cell);
         }
         self.modified = true;
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (engine already has references to grid/cache via DashMap)
         self.rebuild_dependents();
         Ok(count)
     }

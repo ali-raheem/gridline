@@ -1,5 +1,31 @@
 use super::{Core, UndoAction};
+use crate::error::{GridlineError, Result};
 use gridline_engine::engine::{Cell, CellRef, CellType, ShiftOperation, shift_formula_references};
+
+/// Dimension for row/column operations
+#[derive(Copy, Clone)]
+enum Dimension {
+    Row,
+    Column,
+}
+
+impl Dimension {
+    /// Get the coordinate value from a CellRef for this dimension
+    fn get_coord(&self, cell_ref: &CellRef) -> usize {
+        match self {
+            Dimension::Row => cell_ref.row,
+            Dimension::Column => cell_ref.col,
+        }
+    }
+
+    /// Create a new CellRef with modified coordinate in this dimension
+    fn new_cell_ref(&self, cell_ref: &CellRef, new_coord: usize) -> CellRef {
+        match self {
+            Dimension::Row => CellRef::new(new_coord, cell_ref.col),
+            Dimension::Column => CellRef::new(cell_ref.row, new_coord),
+        }
+    }
+}
 
 impl Core {
     /// Mark all cells that depend (transitively) on the changed cell as dirty
@@ -20,10 +46,10 @@ impl Core {
                         cell.dirty = true;
                         cell.cached_value = None;
                     }
-                    // Clear computed value so it will be re-evaluated
-                    self.computed_map.remove(&dep);
+                    // Clear cached value so it will be re-evaluated
+                    self.value_cache.remove(&dep);
                     // Track spills that need clearing
-                    if self.spill_map.contains_key(&dep) {
+                    if self.value_cache.contains_key(&dep) {
                         spills_to_clear.push(dep.clone());
                     }
                     to_process.push(dep.clone());
@@ -61,7 +87,7 @@ impl Core {
     }
 
     /// Set cell contents from input string.
-    pub fn set_cell_from_input(&mut self, cell_ref: CellRef, input: &str) -> crate::error::Result<()> {
+    pub fn set_cell_from_input(&mut self, cell_ref: CellRef, input: &str) -> Result<()> {
         let cell = Cell::from_input(input);
 
         // Check for circular dependencies if it's a script
@@ -79,8 +105,7 @@ impl Core {
                         self.grid.remove(&cell_ref);
                     }
                 }
-                self.status_message = "Error: Circular dependency detected".to_string();
-                return Ok(());
+                return Err(GridlineError::CircularDependency);
             }
             // Cycle check passed, now push undo (restore old state first, then re-insert)
             match old_cell {
@@ -99,13 +124,15 @@ impl Core {
         }
 
         self.modified = true;
-        self.status_message.clear();
 
         // Clear any spill originating from this cell
         self.clear_spill_from(&cell_ref);
 
-        // Recreate engine with updated grid
-        self.recreate_engine();
+        // Rebuild engine so builtins see updated grid
+        let _ = self.recreate_engine_with_functions();
+
+        // Rebuild dependencies
+        self.rebuild_dependents();
 
         // Mark dependent cells as dirty
         self.mark_dependents_dirty(&cell_ref);
@@ -123,18 +150,22 @@ impl Core {
             // Clear any spill originating from this cell
             self.clear_spill_from(cell_ref);
 
-            self.recreate_engine();
+            // Rebuild engine so builtins see updated grid
+            let _ = self.recreate_engine_with_functions();
+
+            // Rebuild dependencies
+            self.rebuild_dependents();
             self.mark_dependents_dirty(cell_ref);
         }
     }
 
-    /// Insert a row above the specified row
-    pub fn insert_row(&mut self, at_row: usize) {
-        // Collect all cells at row >= at_row
+    /// Generic insert operation for row or column
+    fn insert_dimension(&mut self, dim: Dimension, at: usize) {
+        // Collect all cells at coord >= at
         let cells_to_move: Vec<(CellRef, Cell)> = self
             .grid
             .iter()
-            .filter(|entry| entry.key().row >= at_row)
+            .filter(|entry| dim.get_coord(entry.key()) >= at)
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect();
 
@@ -144,7 +175,10 @@ impl Core {
         }
 
         // Update ALL formulas in the grid with shifted references
-        let op = ShiftOperation::InsertRow(at_row);
+        let op = match dim {
+            Dimension::Row => ShiftOperation::InsertRow(at),
+            Dimension::Column => ShiftOperation::InsertColumn(at),
+        };
         let all_cells: Vec<(CellRef, Cell)> = self
             .grid
             .iter()
@@ -161,9 +195,10 @@ impl Core {
             }
         }
 
-        // Reinsert moved cells with row + 1, also shifting their formulas
+        // Reinsert moved cells with coord + 1, also shifting their formulas
         for (cell_ref, cell) in cells_to_move {
-            let new_ref = CellRef::new(cell_ref.row + 1, cell_ref.col);
+            let coord = dim.get_coord(&cell_ref);
+            let new_ref = dim.new_cell_ref(&cell_ref, coord + 1);
             let new_cell = if let CellType::Script(formula) = &cell.contents {
                 let new_formula = shift_formula_references(formula, op);
                 Cell::new_script(&new_formula)
@@ -173,36 +208,37 @@ impl Core {
             self.grid.insert(new_ref, new_cell);
         }
 
-        // Clear spill/computed maps and rebuild
+        // Clear spill sources and value cache, then rebuild
         self.spill_sources.clear();
-        self.spill_map.clear();
-        self.computed_map.clear();
+        self.value_cache.clear();
         self.invalidate_script_cache();
-        self.recreate_engine();
+        // Rebuild engine so builtins see updated grid
+        let _ = self.recreate_engine_with_functions();
+        // Rebuild dependencies
+        self.rebuild_dependents();
         self.modified = true;
-        self.status_message = format!("Inserted row at {}", at_row + 1);
     }
 
-    /// Delete the specified row
-    pub fn delete_row(&mut self, at_row: usize) {
-        // Collect cells at the deleted row (for undo - future enhancement)
-        let cells_at_row: Vec<CellRef> = self
+    /// Generic delete operation for row or column
+    fn delete_dimension(&mut self, dim: Dimension, at: usize) {
+        // Collect cells at the deleted coordinate
+        let cells_at: Vec<CellRef> = self
             .grid
             .iter()
-            .filter(|entry| entry.key().row == at_row)
+            .filter(|entry| dim.get_coord(entry.key()) == at)
             .map(|entry| entry.key().clone())
             .collect();
 
-        // Remove cells at the deleted row
-        for cell_ref in cells_at_row {
+        // Remove cells at the deleted coordinate
+        for cell_ref in cells_at {
             self.grid.remove(&cell_ref);
         }
 
-        // Collect cells below the deleted row
+        // Collect cells after the deleted coordinate
         let cells_to_move: Vec<(CellRef, Cell)> = self
             .grid
             .iter()
-            .filter(|entry| entry.key().row > at_row)
+            .filter(|entry| dim.get_coord(entry.key()) > at)
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect();
 
@@ -212,7 +248,10 @@ impl Core {
         }
 
         // Update ALL formulas with shifted references
-        let op = ShiftOperation::DeleteRow(at_row);
+        let op = match dim {
+            Dimension::Row => ShiftOperation::DeleteRow(at),
+            Dimension::Column => ShiftOperation::DeleteColumn(at),
+        };
         let all_cells: Vec<(CellRef, Cell)> = self
             .grid
             .iter()
@@ -234,9 +273,10 @@ impl Core {
             }
         }
 
-        // Reinsert moved cells with row - 1, also shifting their formulas
+        // Reinsert moved cells with coord - 1, also shifting their formulas
         for (cell_ref, cell) in cells_to_move {
-            let new_ref = CellRef::new(cell_ref.row - 1, cell_ref.col);
+            let coord = dim.get_coord(&cell_ref);
+            let new_ref = dim.new_cell_ref(&cell_ref, coord - 1);
             let new_cell = if let CellType::Script(formula) = &cell.contents {
                 let new_formula = shift_formula_references(formula, op);
                 if new_formula.contains("#REF!") {
@@ -250,153 +290,41 @@ impl Core {
             self.grid.insert(new_ref, new_cell);
         }
 
-        // Clear spill/computed maps and rebuild
+        // Clear spill sources and value cache, then rebuild
         self.spill_sources.clear();
-        self.spill_map.clear();
-        self.computed_map.clear();
+        self.value_cache.clear();
         self.invalidate_script_cache();
-        self.recreate_engine();
+        // Rebuild engine so builtins see updated grid
+        let _ = self.recreate_engine_with_functions();
+        // Rebuild dependencies
+        self.rebuild_dependents();
         self.modified = true;
-        self.status_message = format!("Deleted row {}", at_row + 1);
+    }
+
+    /// Insert a row above the specified row
+    pub fn insert_row(&mut self, at_row: usize) {
+        self.insert_dimension(Dimension::Row, at_row);
+    }
+
+    /// Delete the specified row
+    pub fn delete_row(&mut self, at_row: usize) {
+        self.delete_dimension(Dimension::Row, at_row);
     }
 
     /// Insert a column left of the specified column
     pub fn insert_column(&mut self, at_col: usize) {
-        // Collect all cells at col >= at_col
-        let cells_to_move: Vec<(CellRef, Cell)> = self
-            .grid
-            .iter()
-            .filter(|entry| entry.key().col >= at_col)
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-
-        // Remove them from grid
-        for (cell_ref, _) in &cells_to_move {
-            self.grid.remove(cell_ref);
-        }
-
-        // Update ALL formulas in the grid with shifted references
-        let op = ShiftOperation::InsertColumn(at_col);
-        let all_cells: Vec<(CellRef, Cell)> = self
-            .grid
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-
-        for (cell_ref, cell) in all_cells {
-            if let CellType::Script(formula) = &cell.contents {
-                let new_formula = shift_formula_references(formula, op);
-                if new_formula != *formula {
-                    let new_cell = Cell::new_script(&new_formula);
-                    self.grid.insert(cell_ref, new_cell);
-                }
-            }
-        }
-
-        // Reinsert moved cells with col + 1, also shifting their formulas
-        for (cell_ref, cell) in cells_to_move {
-            let new_ref = CellRef::new(cell_ref.row, cell_ref.col + 1);
-            let new_cell = if let CellType::Script(formula) = &cell.contents {
-                let new_formula = shift_formula_references(formula, op);
-                Cell::new_script(&new_formula)
-            } else {
-                cell
-            };
-            self.grid.insert(new_ref, new_cell);
-        }
-
-        // Clear spill/computed maps and rebuild
-        self.spill_sources.clear();
-        self.spill_map.clear();
-        self.computed_map.clear();
-        self.invalidate_script_cache();
-        self.recreate_engine();
-        self.modified = true;
-        self.status_message = format!("Inserted column at {}", CellRef::col_to_letters(at_col));
+        self.insert_dimension(Dimension::Column, at_col);
     }
 
     /// Delete the specified column
     pub fn delete_column(&mut self, at_col: usize) {
-        // Collect cells at the deleted column
-        let cells_at_col: Vec<CellRef> = self
-            .grid
-            .iter()
-            .filter(|entry| entry.key().col == at_col)
-            .map(|entry| entry.key().clone())
-            .collect();
-
-        // Remove cells at the deleted column
-        for cell_ref in cells_at_col {
-            self.grid.remove(&cell_ref);
-        }
-
-        // Collect cells to the right of the deleted column
-        let cells_to_move: Vec<(CellRef, Cell)> = self
-            .grid
-            .iter()
-            .filter(|entry| entry.key().col > at_col)
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-
-        // Remove them from grid
-        for (cell_ref, _) in &cells_to_move {
-            self.grid.remove(cell_ref);
-        }
-
-        // Update ALL formulas with shifted references
-        let op = ShiftOperation::DeleteColumn(at_col);
-        let all_cells: Vec<(CellRef, Cell)> = self
-            .grid
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-
-        for (cell_ref, cell) in all_cells {
-            if let CellType::Script(formula) = &cell.contents {
-                let new_formula = shift_formula_references(formula, op);
-                if new_formula != *formula {
-                    let new_cell = if new_formula.contains("#REF!") {
-                        Cell::new_text(&format!("={}", new_formula))
-                    } else {
-                        Cell::new_script(&new_formula)
-                    };
-                    self.grid.insert(cell_ref, new_cell);
-                }
-            }
-        }
-
-        // Reinsert moved cells with col - 1, also shifting their formulas
-        for (cell_ref, cell) in cells_to_move {
-            let new_ref = CellRef::new(cell_ref.row, cell_ref.col - 1);
-            let new_cell = if let CellType::Script(formula) = &cell.contents {
-                let new_formula = shift_formula_references(formula, op);
-                if new_formula.contains("#REF!") {
-                    Cell::new_text(&format!("={}", new_formula))
-                } else {
-                    Cell::new_script(&new_formula)
-                }
-            } else {
-                cell
-            };
-            self.grid.insert(new_ref, new_cell);
-        }
-
-        // Clear spill/computed maps and rebuild
-        self.spill_sources.clear();
-        self.spill_map.clear();
-        self.computed_map.clear();
-        self.invalidate_script_cache();
-        self.recreate_engine();
-        self.modified = true;
-        self.status_message = format!("Deleted column {}", CellRef::col_to_letters(at_col));
+        self.delete_dimension(Dimension::Column, at_col);
     }
 
+
     /// Undo the last action
-    pub fn undo(&mut self) {
-        let Some(action) = self.undo_stack.pop() else {
-            self.status_message = "Nothing to undo".to_string();
-            return;
-        };
+    pub fn undo(&mut self) -> Result<()> {
+        let action = self.undo_stack.pop().ok_or(GridlineError::NothingToUndo)?;
 
         // Push inverse to redo stack
         let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
@@ -418,17 +346,17 @@ impl Core {
             }
         }
 
-        self.recreate_engine();
+        // Rebuild engine so builtins see updated grid
+        let _ = self.recreate_engine_with_functions();
+        // Rebuild dependencies
+        self.rebuild_dependents();
         self.mark_dependents_dirty(&cell_ref);
-        self.status_message = "Undone".to_string();
+        Ok(())
     }
 
     /// Redo the last undone action
-    pub fn redo(&mut self) {
-        let Some(action) = self.redo_stack.pop() else {
-            self.status_message = "Nothing to redo".to_string();
-            return;
-        };
+    pub fn redo(&mut self) -> Result<()> {
+        let action = self.redo_stack.pop().ok_or(GridlineError::NothingToRedo)?;
 
         // Push inverse to undo stack
         let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
@@ -450,9 +378,12 @@ impl Core {
             }
         }
 
-        self.recreate_engine();
+        // Rebuild engine so builtins see updated grid
+        let _ = self.recreate_engine_with_functions();
+        // Rebuild dependencies
+        self.rebuild_dependents();
         self.mark_dependents_dirty(&cell_ref);
-        self.status_message = "Redone".to_string();
+        Ok(())
     }
 
     /// Paste cells at a base row/column, recording undo and dependencies.
@@ -475,7 +406,10 @@ impl Core {
         }
 
         self.modified = true;
-        self.recreate_engine();
+        // Rebuild engine so builtins see updated grid
+        let _ = self.recreate_engine_with_functions();
+        // Rebuild dependencies
+        self.rebuild_dependents();
 
         let count = pasted_cells.len();
         // Mark dependents of all pasted cells as dirty
@@ -501,11 +435,11 @@ mod tests {
         core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)").unwrap(); // A1
 
         let _ = core.get_cell_display(&CellRef::new(0, 0));
-        assert!(core.spill_map.contains_key(&CellRef::new(1, 0)));
+        assert!(core.value_cache.contains_key(&CellRef::new(1, 0)));
         assert!(core.spill_sources.contains_key(&CellRef::new(1, 0)));
 
         core.delete_column(1);
-        assert!(core.spill_map.is_empty());
+        assert!(core.value_cache.is_empty());
         assert!(core.spill_sources.is_empty());
     }
 }

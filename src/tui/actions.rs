@@ -3,6 +3,65 @@ use crossterm::event::{self, KeyCode, KeyModifiers};
 use super::app::{App, Mode};
 use super::keymap::Action;
 
+/// Handle text editing operations on a buffer with UTF-8 aware cursor movement.
+fn handle_text_input(buffer: &mut String, cursor: &mut usize, key: event::KeyEvent) {
+    match key.code {
+        KeyCode::Left => {
+            if *cursor > 0 {
+                let mut new_pos = *cursor - 1;
+                while new_pos > 0 && !buffer.is_char_boundary(new_pos) {
+                    new_pos -= 1;
+                }
+                *cursor = new_pos;
+            }
+        }
+        KeyCode::Right => {
+            if *cursor < buffer.len() {
+                let mut new_pos = *cursor + 1;
+                while new_pos < buffer.len() && !buffer.is_char_boundary(new_pos) {
+                    new_pos += 1;
+                }
+                *cursor = new_pos;
+            }
+        }
+        KeyCode::Home => {
+            *cursor = 0;
+        }
+        KeyCode::End => {
+            *cursor = buffer.len();
+        }
+        KeyCode::Backspace | KeyCode::Char('h')
+            if key.code == KeyCode::Backspace
+                || key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            if *cursor > 0 {
+                let mut del_start = *cursor - 1;
+                while del_start > 0 && !buffer.is_char_boundary(del_start) {
+                    del_start -= 1;
+                }
+                buffer.drain(del_start..*cursor);
+                *cursor = del_start;
+            }
+        }
+        KeyCode::Delete => {
+            if *cursor < buffer.len() {
+                let mut del_end = *cursor + 1;
+                while del_end < buffer.len() && !buffer.is_char_boundary(del_end) {
+                    del_end += 1;
+                }
+                buffer.drain(*cursor..del_end);
+            }
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
+                buffer.insert(*cursor, c);
+                *cursor += c.len_utf8();
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Result of applying an action.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApplyResult {
@@ -85,143 +144,9 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
 }
 
 pub fn handle_edit_text(app: &mut App, key: event::KeyEvent) {
-    match key.code {
-        KeyCode::Left => {
-            // Move cursor left (handle UTF-8 char boundaries)
-            if app.edit_cursor > 0 {
-                let mut new_pos = app.edit_cursor - 1;
-                while new_pos > 0 && !app.edit_buffer.is_char_boundary(new_pos) {
-                    new_pos -= 1;
-                }
-                app.edit_cursor = new_pos;
-            }
-        }
-        KeyCode::Right => {
-            // Move cursor right (handle UTF-8 char boundaries)
-            if app.edit_cursor < app.edit_buffer.len() {
-                let mut new_pos = app.edit_cursor + 1;
-                while new_pos < app.edit_buffer.len() && !app.edit_buffer.is_char_boundary(new_pos)
-                {
-                    new_pos += 1;
-                }
-                app.edit_cursor = new_pos;
-            }
-        }
-        KeyCode::Home => {
-            app.edit_cursor = 0;
-        }
-        KeyCode::End => {
-            app.edit_cursor = app.edit_buffer.len();
-        }
-        KeyCode::Backspace => {
-            // Delete char before cursor
-            if app.edit_cursor > 0 {
-                let mut del_start = app.edit_cursor - 1;
-                while del_start > 0 && !app.edit_buffer.is_char_boundary(del_start) {
-                    del_start -= 1;
-                }
-                app.edit_buffer.drain(del_start..app.edit_cursor);
-                app.edit_cursor = del_start;
-            }
-        }
-        // Some terminals send Backspace as Ctrl+H in raw mode.
-        KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            if app.edit_cursor > 0 {
-                let mut del_start = app.edit_cursor - 1;
-                while del_start > 0 && !app.edit_buffer.is_char_boundary(del_start) {
-                    del_start -= 1;
-                }
-                app.edit_buffer.drain(del_start..app.edit_cursor);
-                app.edit_cursor = del_start;
-            }
-        }
-        KeyCode::Delete => {
-            // Delete char at cursor
-            if app.edit_cursor < app.edit_buffer.len() {
-                let mut del_end = app.edit_cursor + 1;
-                while del_end < app.edit_buffer.len() && !app.edit_buffer.is_char_boundary(del_end)
-                {
-                    del_end += 1;
-                }
-                app.edit_buffer.drain(app.edit_cursor..del_end);
-            }
-        }
-        KeyCode::Char(c) => {
-            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                // Insert char at cursor position
-                app.edit_buffer.insert(app.edit_cursor, c);
-                app.edit_cursor += c.len_utf8();
-            }
-        }
-        _ => {}
-    }
+    handle_text_input(&mut app.edit_buffer, &mut app.edit_cursor, key);
 }
 
 pub fn handle_command_text(app: &mut App, key: event::KeyEvent) {
-    match key.code {
-        KeyCode::Left => {
-            if app.command_cursor > 0 {
-                let mut new_pos = app.command_cursor - 1;
-                while new_pos > 0 && !app.command_buffer.is_char_boundary(new_pos) {
-                    new_pos -= 1;
-                }
-                app.command_cursor = new_pos;
-            }
-        }
-        KeyCode::Right => {
-            if app.command_cursor < app.command_buffer.len() {
-                let mut new_pos = app.command_cursor + 1;
-                while new_pos < app.command_buffer.len()
-                    && !app.command_buffer.is_char_boundary(new_pos)
-                {
-                    new_pos += 1;
-                }
-                app.command_cursor = new_pos;
-            }
-        }
-        KeyCode::Home => {
-            app.command_cursor = 0;
-        }
-        KeyCode::End => {
-            app.command_cursor = app.command_buffer.len();
-        }
-        KeyCode::Backspace => {
-            if app.command_cursor > 0 {
-                let mut del_start = app.command_cursor - 1;
-                while del_start > 0 && !app.command_buffer.is_char_boundary(del_start) {
-                    del_start -= 1;
-                }
-                app.command_buffer.drain(del_start..app.command_cursor);
-                app.command_cursor = del_start;
-            }
-        }
-        KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            if app.command_cursor > 0 {
-                let mut del_start = app.command_cursor - 1;
-                while del_start > 0 && !app.command_buffer.is_char_boundary(del_start) {
-                    del_start -= 1;
-                }
-                app.command_buffer.drain(del_start..app.command_cursor);
-                app.command_cursor = del_start;
-            }
-        }
-        KeyCode::Delete => {
-            if app.command_cursor < app.command_buffer.len() {
-                let mut del_end = app.command_cursor + 1;
-                while del_end < app.command_buffer.len()
-                    && !app.command_buffer.is_char_boundary(del_end)
-                {
-                    del_end += 1;
-                }
-                app.command_buffer.drain(app.command_cursor..del_end);
-            }
-        }
-        KeyCode::Char(c) => {
-            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                app.command_buffer.insert(app.command_cursor, c);
-                app.command_cursor += c.len_utf8();
-            }
-        }
-        _ => {}
-    }
+    handle_text_input(&mut app.command_buffer, &mut app.command_cursor, key);
 }

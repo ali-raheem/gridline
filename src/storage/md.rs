@@ -94,8 +94,8 @@ fn find_grid_bounds(app: &App) -> (usize, usize, usize, usize) {
         max_col = max_col.max(cell_ref.col);
     }
 
-    // Check spill_map for additional cells
-    for entry in app.core.spill_map.iter() {
+    // Check value_cache for additional cells (e.g., array spills)
+    for entry in app.core.value_cache.iter() {
         let cell_ref = entry.key();
         min_row = min_row.min(cell_ref.row);
         min_col = min_col.min(cell_ref.col);
