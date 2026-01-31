@@ -111,8 +111,6 @@ pub struct App {
     pub modified: bool,
     /// Status message to display
     pub status_message: String,
-    /// Confirm quit flag
-    pub confirm_quit: bool,
     /// Column width for display
     pub col_width: usize,
     /// Undo stack
@@ -185,7 +183,6 @@ impl App {
             file_path: None,
             modified: false,
             status_message: String::new(),
-            confirm_quit: false,
             col_width: 12,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),

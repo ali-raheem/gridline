@@ -373,29 +373,49 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
     if trimmed.is_empty() {
         return Err("empty key".to_string());
     }
+    if trimmed.len() == 1 {
+        let ch = trimmed.chars().next().unwrap();
+        return Ok(KeyCombo {
+            code: KeyCode::Char(ch),
+            modifiers: KeyModifiers::empty(),
+        });
+    }
 
-    let parts: Vec<&str> = trimmed.split('-').collect();
-    let (mods, key_part) = if parts.len() == 1 {
-        (KeyModifiers::empty(), parts[0])
+    let (mods, key_part) = if !trimmed.contains('-') {
+        (KeyModifiers::empty(), trimmed)
+    } else if trimmed.ends_with('-') {
+        let mod_str = &trimmed[..trimmed.len() - 1];
+        let modifiers = parse_modifiers(mod_str)?;
+        (modifiers, "-")
     } else {
-        let (mod_parts, key_part) = parts.split_at(parts.len() - 1);
-        let mut modifiers = KeyModifiers::empty();
-        for part in mod_parts {
-            let norm = part.trim().to_ascii_lowercase();
-            match norm.as_str() {
-                "c" | "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
-                "m" | "alt" | "meta" => modifiers.insert(KeyModifiers::ALT),
-                "s" | "shift" => modifiers.insert(KeyModifiers::SHIFT),
-                _ => {
-                    return Err(format!("unknown modifier '{}'", part));
-                }
-            }
-        }
-        (modifiers, key_part[0])
+        let mut split = trimmed.rsplitn(2, '-');
+        let key_part = split.next().unwrap();
+        let mod_str = split.next().unwrap_or_default();
+        let modifiers = parse_modifiers(mod_str)?;
+        (modifiers, key_part)
     };
 
     let key = parse_key_code(key_part)?;
     Ok(KeyCombo { code: key, modifiers: mods })
+}
+
+fn parse_modifiers(input: &str) -> Result<KeyModifiers, String> {
+    let mut modifiers = KeyModifiers::empty();
+    for part in input.split('-') {
+        if part.trim().is_empty() {
+            continue;
+        }
+        let norm = part.trim().to_ascii_lowercase();
+        match norm.as_str() {
+            "c" | "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
+            "m" | "alt" | "meta" => modifiers.insert(KeyModifiers::ALT),
+            "s" | "shift" => modifiers.insert(KeyModifiers::SHIFT),
+            _ => {
+                return Err(format!("unknown modifier '{}'", part));
+            }
+        }
+    }
+    Ok(modifiers)
 }
 
 fn parse_key_code(input: &str) -> Result<KeyCode, String> {
@@ -421,7 +441,22 @@ fn parse_key_code(input: &str) -> Result<KeyCode, String> {
         "right" => Ok(KeyCode::Right),
         "up" => Ok(KeyCode::Up),
         "down" => Ok(KeyCode::Down),
-        "space" => Ok(KeyCode::Char(' ')),
+        "space" | "spc" => Ok(KeyCode::Char(' ')),
+        "dash" | "minus" => Ok(KeyCode::Char('-')),
+        "plus" => Ok(KeyCode::Char('+')),
+        "greater" => Ok(KeyCode::Char('>')),
+        "less" => Ok(KeyCode::Char('<')),
+        "comma" => Ok(KeyCode::Char(',')),
+        "period" | "dot" => Ok(KeyCode::Char('.')),
+        "slash" => Ok(KeyCode::Char('/')),
+        "backslash" => Ok(KeyCode::Char('\\')),
+        "semicolon" => Ok(KeyCode::Char(';')),
+        "quote" | "apostrophe" => Ok(KeyCode::Char('\'')),
+        "doublequote" => Ok(KeyCode::Char('"')),
+        "backtick" | "grave" => Ok(KeyCode::Char('`')),
+        "lbracket" | "leftbracket" => Ok(KeyCode::Char('[')),
+        "rbracket" | "rightbracket" => Ok(KeyCode::Char(']')),
+        "equal" => Ok(KeyCode::Char('=')),
         _ => Err(format!("unknown key '{}'", input)),
     }
 }
@@ -481,6 +516,20 @@ mod tests {
         let combo = parse_key_combo("Enter").expect("combo");
         assert_eq!(combo.code, KeyCode::Enter);
         assert!(combo.modifiers.is_empty());
+    }
+
+    #[test]
+    fn parse_key_combo_dash() {
+        let combo = parse_key_combo("-").expect("combo");
+        assert_eq!(combo.code, KeyCode::Char('-'));
+        assert!(combo.modifiers.is_empty());
+    }
+
+    #[test]
+    fn parse_key_combo_ctrl_dash() {
+        let combo = parse_key_combo("C--").expect("combo");
+        assert_eq!(combo.code, KeyCode::Char('-'));
+        assert!(combo.modifiers.contains(KeyModifiers::CONTROL));
     }
 
     #[test]
