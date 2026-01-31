@@ -1,8 +1,17 @@
+//! Formula preprocessing and reference transformation.
+//!
+//! Before formulas can be evaluated by Rhai, cell references like `A1` must
+//! be transformed into function calls like `cell(0, 0)`. This module handles:
+//!
+//! - **Preprocessing**: Converting `A1` → `cell(0, 0)` and `@A1` → `value(0, 0)`
+//! - **Range functions**: Converting `SUM(A1:B5)` → `sum_range(0, 0, 4, 1)`
+//! - **Reference shifting**: Adjusting references when rows/columns are inserted/deleted
+
 use regex::Regex;
 
 use super::cell_ref::CellRef;
 
-/// Operation for shifting cell references in formulas
+/// Operation for shifting cell references in formulas.
 #[derive(Clone, Copy, Debug)]
 pub enum ShiftOperation {
     InsertRow(usize),

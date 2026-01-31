@@ -24,7 +24,31 @@ Why it's fun:
 - 🧠 Formulas are real Rhai scripts (with spreadsheet sugar)
 - 📈 Quick plots right in the terminal
 
-![gridline in action](screen.jpg)
+## Screenshots
+
+<p align="center">
+  <a href="screen.jpg">
+    <img src="screen.jpg" alt="Gridline spreadsheet view" width="900" />
+  </a>
+  <br />
+  <sub>Fast, keyboard-first spreadsheets in your terminal: formulas, ranges, and a real formula bar.</sub>
+</p>
+
+<p align="center">
+  <a href="plot.jpg">
+    <img src="plot.jpg" alt="Gridline plotting modal" width="900" />
+  </a>
+  <br />
+  <sub>Turn data into insight without context-switching: quick plots right where you work.</sub>
+</p>
+
+<p align="center">
+  <a href="spill.jpg">
+    <img src="spill.jpg" alt="Gridline SPILL and map example" width="900" />
+  </a>
+  <br />
+  <sub>Go beyond cell-by-cell: SPILL + Rhai lets you generate and reshape tables with reusable logic.</sub>
+</p>
 
 ## Quick Start 🚀
 
@@ -96,7 +120,11 @@ A1: =len(@B1)
 Built-in range functions (ALL CAPS):
 - `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`
 - `BARCHART`, `LINECHART`, `SCATTER`
-- `VEC` (convert a range to an array)
+- `VEC` (convert a range to an array; respects direction: `VEC(A3:A1)` returns `[A3, A2, A1]`)
+
+Other built-ins:
+- `RAND()` - random float in `[0.0, 1.0)`
+- `RANDINT(min, max)` - random integer in `[min, max]` inclusive
 
 ### Custom Functions Example 🧩
 

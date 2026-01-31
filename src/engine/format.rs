@@ -1,3 +1,9 @@
+//! Value formatting for display.
+//!
+//! Converts Rhai Dynamic values and numbers into user-friendly display strings.
+//! Handles special cases like NaN, infinity, and formatting numbers without
+//! unnecessary decimal places.
+
 use super::Dynamic;
 
 /// Format a Dynamic value for display.

@@ -3,7 +3,17 @@ use crossterm::event::{self, KeyCode, KeyModifiers};
 use super::app::{App, Mode};
 use super::keymap::Action;
 
-pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) {
+/// Result of applying an action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApplyResult {
+    Continue,
+    Quit,
+}
+
+/// Apply an action to the application state.
+///
+/// Returns `ApplyResult::Quit` if the application should exit.
+pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> ApplyResult {
     match action {
         Action::Cancel => match app.mode {
             Mode::Edit => {
@@ -26,7 +36,11 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) {
             app.mode = Mode::Command;
             app.command_buffer.clear();
         }
-        Action::ExecuteCommand => app.execute_command(),
+        Action::ExecuteCommand => {
+            if app.execute_command() {
+                return ApplyResult::Quit;
+            }
+        }
         Action::EnterVisual => {
             if app.mode != Mode::Visual {
                 app.enter_visual_mode();
@@ -63,6 +77,7 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) {
         Action::DecColWidth => app.decrease_column_width(),
         Action::Save => app.save_file(),
     }
+    ApplyResult::Continue
 }
 
 pub fn handle_edit_text(app: &mut App, key: event::KeyEvent) {

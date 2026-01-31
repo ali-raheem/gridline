@@ -1,3 +1,17 @@
+//! Cell reference parsing and formatting.
+//!
+//! Provides bidirectional conversion between spreadsheet-style cell references
+//! (e.g., "A1", "B2", "AA100") and zero-indexed row/column coordinates.
+//!
+//! # Examples
+//!
+//! ```ignore
+//! let cell = CellRef::from_str("B3").unwrap();
+//! assert_eq!(cell.row, 2);  // 0-indexed
+//! assert_eq!(cell.col, 1);
+//! assert_eq!(cell.to_string(), "B3");
+//! ```
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;

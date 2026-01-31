@@ -1,4 +1,9 @@
-//! Plot spec encoding for chart cells.
+//! Plot spec encoding and data preparation for chart cells.
+//!
+//! This module provides:
+//! - [`PlotSpec`]: Specification for a plot (type, range, labels)
+//! - [`PlotData`]: Prepared data for rendering (frontend-agnostic)
+//! - Encoding/decoding of plot specs to/from cell display strings
 //!
 //! The engine returns a tagged string for plot formulas (e.g. `=BARCHART(A1:A10)`).
 //! The TUI detects and renders these in a modal.
@@ -31,6 +36,7 @@ impl PlotKind {
     }
 }
 
+/// Specification for a plot (parsed from a plot cell).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlotSpec {
     pub kind: PlotKind,
@@ -42,6 +48,162 @@ pub struct PlotSpec {
     pub title: Option<String>,
     pub x_label: Option<String>,
     pub y_label: Option<String>,
+}
+
+impl PlotSpec {
+    /// Validate that the plot spec is valid for its type.
+    ///
+    /// Returns `Ok(())` if valid, or an error message describing the problem.
+    pub fn validate(&self) -> Result<(), String> {
+        let cols = self.c2.abs_diff(self.c1) + 1;
+
+        match self.kind {
+            PlotKind::Scatter => {
+                if cols != 2 {
+                    return Err(format!(
+                        "SCATTER requires exactly 2 columns (X and Y), got {}",
+                        cols
+                    ));
+                }
+            }
+            PlotKind::Bar | PlotKind::Line => {
+                // Bar and Line can work with any range
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Prepared data for rendering a plot (frontend-agnostic).
+///
+/// This intermediate representation separates data extraction from rendering,
+/// allowing different frontends (TUI, GUI) to use the same data preparation logic.
+#[derive(Clone, Debug)]
+pub struct PlotData {
+    /// The original plot specification.
+    pub spec: PlotSpec,
+    /// Data points as (x, y) pairs.
+    pub points: Vec<(f32, f32)>,
+    /// X-axis range (min, max).
+    pub x_range: (f32, f32),
+    /// Y-axis range (min, max).
+    pub y_range: (f32, f32),
+    /// Warnings about data quality (e.g., skipped non-numeric cells).
+    pub warnings: Vec<String>,
+}
+
+impl PlotData {
+    /// Extract plot data from a spec using a cell value accessor.
+    ///
+    /// The `cell_value` closure takes (row, col) and returns the numeric value
+    /// at that position, or `None` if the cell is empty or non-numeric.
+    pub fn from_spec<F>(spec: &PlotSpec, mut cell_value: F) -> Result<Self, String>
+    where
+        F: FnMut(usize, usize) -> Option<f64>,
+    {
+        // Validate first
+        spec.validate()?;
+
+        let r1 = spec.r1.min(spec.r2);
+        let r2 = spec.r1.max(spec.r2);
+        let c1 = spec.c1.min(spec.c2);
+        let c2 = spec.c1.max(spec.c2);
+
+        let mut points = Vec::new();
+        let mut warnings = Vec::new();
+        let mut skipped_count = 0;
+
+        match spec.kind {
+            PlotKind::Scatter => {
+                for r in r1..=r2 {
+                    let x = cell_value(r, c1);
+                    let y = cell_value(r, c2);
+                    match (x, y) {
+                        (Some(x), Some(y)) => points.push((x as f32, y as f32)),
+                        _ => skipped_count += 1,
+                    }
+                }
+            }
+            PlotKind::Bar | PlotKind::Line => {
+                let mut ys = Vec::new();
+                if r1 == r2 {
+                    // Single row: iterate columns
+                    for c in c1..=c2 {
+                        match cell_value(r1, c) {
+                            Some(v) => ys.push(v as f32),
+                            None => {
+                                ys.push(0.0);
+                                skipped_count += 1;
+                            }
+                        }
+                    }
+                } else if c1 == c2 {
+                    // Single column: iterate rows
+                    for r in r1..=r2 {
+                        match cell_value(r, c1) {
+                            Some(v) => ys.push(v as f32),
+                            None => {
+                                ys.push(0.0);
+                                skipped_count += 1;
+                            }
+                        }
+                    }
+                } else {
+                    // Multi-row, multi-column: iterate row-major
+                    for r in r1..=r2 {
+                        for c in c1..=c2 {
+                            match cell_value(r, c) {
+                                Some(v) => ys.push(v as f32),
+                                None => {
+                                    ys.push(0.0);
+                                    skipped_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                points = ys
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, y)| (i as f32, y))
+                    .collect();
+            }
+        }
+
+        if skipped_count > 0 {
+            warnings.push(format!("{} non-numeric cell(s) treated as 0", skipped_count));
+        }
+
+        if points.is_empty() {
+            return Err("No data points to plot".to_string());
+        }
+
+        // Calculate ranges
+        let (mut xmin, mut xmax) = (points[0].0, points[0].0);
+        let (mut ymin, mut ymax) = (points[0].1, points[0].1);
+        for (x, y) in &points {
+            xmin = xmin.min(*x);
+            xmax = xmax.max(*x);
+            ymin = ymin.min(*y);
+            ymax = ymax.max(*y);
+        }
+
+        // Ensure non-zero ranges
+        if xmax == xmin {
+            xmax = xmin + 1.0;
+        }
+        if ymax == ymin {
+            ymax = ymin + 1.0;
+        }
+
+        Ok(PlotData {
+            spec: spec.clone(),
+            points,
+            x_range: (xmin, xmax),
+            y_range: (ymin, ymax),
+            warnings,
+        })
+    }
 }
 
 fn percent_encode(s: &str) -> String {

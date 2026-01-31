@@ -1,3 +1,9 @@
+//! Rhai engine creation and formula evaluation.
+//!
+//! Creates the Rhai scripting engine with all spreadsheet built-in functions
+//! registered (SUM, AVERAGE, cell accessors, etc.). Also handles evaluation
+//! of formulas with optional user-defined custom functions from external files.
+
 use rhai::Engine;
 use std::sync::Arc;
 

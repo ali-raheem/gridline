@@ -1,3 +1,14 @@
+//! Dependency extraction from formula strings.
+//!
+//! Parses formula text to find all cell references (e.g., `A1`, `B2:C5`)
+//! that the formula depends on. This is used to build the dependency graph
+//! for cache invalidation and cycle detection.
+//!
+//! Handles:
+//! - Simple cell references: `A1`, `B2`
+//! - Range references in functions: `SUM(A1:B5)`
+//! - Ignores references inside string literals
+
 use regex::Regex;
 
 use super::cell_ref::CellRef;

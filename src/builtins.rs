@@ -8,8 +8,9 @@
 
 use crate::engine::{CellRef, CellType, Grid, SpillMap, preprocess_script};
 use crate::plot::{PlotKind, PlotSpec, format_plot_spec};
+use rand::Rng;
 use regex::Regex;
-use rhai::{Dynamic, Engine, FnPtr, NativeCallContext};
+use rhai::{Dynamic, Engine, NativeCallContext};
 use std::sync::{Arc, OnceLock};
 
 pub struct RangeBuiltin {
@@ -408,70 +409,59 @@ pub fn register_builtins(engine: &mut Engine, grid: Arc<Grid>, spill_map: Arc<Sp
         },
     );
 
-    // sorted(array): returns a new sorted array (non-mutating alternative to .sort())
-    engine.register_fn("sorted", |arr: rhai::Array| -> rhai::Array {
-        let mut result = arr.clone();
-        result.sort_by(|a, b| {
-            // Compare as floats if both are numeric
-            let a_num = a
-                .as_float()
-                .ok()
-                .or_else(|| a.as_int().ok().map(|i| i as f64));
-            let b_num = b
-                .as_float()
-                .ok()
-                .or_else(|| b.as_int().ok().map(|i| i as f64));
-            match (a_num, b_num) {
-                (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
-                _ => {
-                    // Fall back to string comparison
-                    let a_str = a.to_string();
-                    let b_str = b.to_string();
-                    a_str.cmp(&b_str)
-                }
-            }
-        });
-        result
+    // SPILL(x): converts ranges to arrays, identity for arrays.
+    // Arrays automatically spill down when returned from a formula.
+    // Function form: SPILL(0..=10) or SPILL(arr)
+    engine.register_fn("SPILL", |arr: rhai::Array| -> rhai::Array { arr });
+    engine.register_fn("SPILL", |range: std::ops::Range<i64>| -> rhai::Array {
+        range.map(Dynamic::from).collect()
     });
-
-    // OUTPUT(x): identity, but named to communicate "spill this" intent.
-    // OUTPUT(x, f): calls f(x) and returns f's result (or x if f returns ())
-    // This is useful for in-place operations like Rhai's Array.sort() which returns ().
-    engine.register_fn("OUTPUT", |x: Dynamic| -> Dynamic { x });
     engine.register_fn(
-        "OUTPUT",
-        |ctx: NativeCallContext,
-         x: Dynamic,
-         f: FnPtr|
-         -> Result<Dynamic, Box<rhai::EvalAltResult>> {
-            let out = f.call_within_context::<Dynamic>(&ctx, (x.clone(),))?;
-            if out.is_unit() { Ok(x) } else { Ok(out) }
+        "SPILL",
+        |range: std::ops::RangeInclusive<i64>| -> rhai::Array {
+            range.map(Dynamic::from).collect()
         },
     );
 
-    // reversed(array): returns a new reversed array (non-mutating alternative to .reverse())
-    engine.register_fn("reversed", |arr: rhai::Array| -> rhai::Array {
-        let mut result = arr.clone();
-        result.reverse();
-        result
-    });
+    // Method form: (0..=10).SPILL() or arr.SPILL()
+    engine.register_fn("SPILL", |arr: &mut rhai::Array| -> rhai::Array { arr.clone() });
+    engine.register_fn(
+        "SPILL",
+        |range: &mut std::ops::Range<i64>| -> rhai::Array {
+            range.clone().map(Dynamic::from).collect()
+        },
+    );
+    engine.register_fn(
+        "SPILL",
+        |range: &mut std::ops::RangeInclusive<i64>| -> rhai::Array {
+            range.clone().map(Dynamic::from).collect()
+        },
+    );
 
     // vec_range(r1, c1, r2, c2): returns array of cell values
     // Checks spill map first for spilled array values
+    // Respects range direction: VEC(A3:A1) returns [A3, A2, A1]
     let grid_vec = Arc::clone(&grid);
     let spill_vec = Arc::clone(&spill_map);
     engine.register_fn(
         "vec_range",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> rhai::Array {
-            let min_row = r1.min(r2) as usize;
-            let max_row = r1.max(r2) as usize;
-            let min_col = c1.min(c2) as usize;
-            let max_col = c1.max(c2) as usize;
+            // Build row/col indices respecting direction
+            let rows: Vec<usize> = if r1 <= r2 {
+                (r1 as usize..=r2 as usize).collect()
+            } else {
+                (r2 as usize..=r1 as usize).rev().collect()
+            };
+            let cols: Vec<usize> = if c1 <= c2 {
+                (c1 as usize..=c2 as usize).collect()
+            } else {
+                (c2 as usize..=c1 as usize).rev().collect()
+            };
 
             let mut result = rhai::Array::new();
-            for row in min_row..=max_row {
-                for col in min_col..=max_col {
-                    let cell_ref = CellRef::new(row, col);
+            for row in &rows {
+                for col in &cols {
+                    let cell_ref = CellRef::new(*row, *col);
 
                     // Check spill map first
                     let val = if let Some(spill_val) = spill_vec.get(&cell_ref) {
@@ -497,6 +487,14 @@ pub fn register_builtins(engine: &mut Engine, grid: Arc<Grid>, spill_map: Arc<Sp
             result
         },
     );
+
+    // RAND(): random float in [0.0, 1.0)
+    engine.register_fn("RAND", || -> f64 { rand::thread_rng().r#gen() });
+
+    // RANDINT(min, max): random integer in [min, max] inclusive
+    engine.register_fn("RANDINT", |min: i64, max: i64| -> i64 {
+        rand::thread_rng().r#gen_range(min..=max)
+    });
 }
 
 #[cfg(test)]
@@ -622,26 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sorted_returns_new_array() {
-        let grid: Grid = DashMap::new();
-        grid.insert(CellRef::new(0, 0), Cell::new_number(30.0));
-        grid.insert(CellRef::new(1, 0), Cell::new_number(10.0));
-        grid.insert(CellRef::new(2, 0), Cell::new_number(20.0));
-
-        let mut engine = Engine::new();
-        let spill_map: SpillMap = DashMap::new();
-        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
-
-        // sorted() should return a new sorted array
-        let result: rhai::Array = engine.eval("sorted(vec_range(0, 0, 2, 0))").unwrap();
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0].clone().cast::<f64>(), 10.0);
-        assert_eq!(result[1].clone().cast::<f64>(), 20.0);
-        assert_eq!(result[2].clone().cast::<f64>(), 30.0);
-    }
-
-    #[test]
-    fn test_reversed_returns_new_array() {
+    fn test_spill_array_identity() {
         let grid: Grid = DashMap::new();
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
@@ -651,31 +630,107 @@ mod tests {
         let spill_map: SpillMap = DashMap::new();
         register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
 
-        // reversed() should return a new reversed array
-        let result: rhai::Array = engine.eval("reversed(vec_range(0, 0, 2, 0))").unwrap();
+        // SPILL on array returns the same array
+        let result: rhai::Array = engine.eval("SPILL(vec_range(0, 0, 2, 0))").unwrap();
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].clone().cast::<f64>(), 30.0);
+        assert_eq!(result[0].clone().cast::<f64>(), 10.0);
         assert_eq!(result[1].clone().cast::<f64>(), 20.0);
-        assert_eq!(result[2].clone().cast::<f64>(), 10.0);
+        assert_eq!(result[2].clone().cast::<f64>(), 30.0);
     }
 
     #[test]
-    fn test_output_returns_sorted_array_from_in_place_sort() {
+    fn test_spill_exclusive_range() {
         let grid: Grid = DashMap::new();
-        grid.insert(CellRef::new(0, 0), Cell::new_number(30.0));
-        grid.insert(CellRef::new(1, 0), Cell::new_number(10.0));
-        grid.insert(CellRef::new(2, 0), Cell::new_number(20.0));
+        let mut engine = Engine::new();
+        let spill_map: SpillMap = DashMap::new();
+        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
+
+        // SPILL on exclusive range (0..5) converts to array [0,1,2,3,4]
+        let result: rhai::Array = engine.eval("SPILL(0..5)").unwrap();
+        assert_eq!(result.len(), 5);
+        assert_eq!(result[0].clone().cast::<i64>(), 0);
+        assert_eq!(result[4].clone().cast::<i64>(), 4);
+    }
+
+    #[test]
+    fn test_spill_inclusive_range() {
+        let grid: Grid = DashMap::new();
+        let mut engine = Engine::new();
+        let spill_map: SpillMap = DashMap::new();
+        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
+
+        // SPILL on inclusive range (0..=5) converts to array [0,1,2,3,4,5]
+        let result: rhai::Array = engine.eval("SPILL(0..=5)").unwrap();
+        assert_eq!(result.len(), 6);
+        assert_eq!(result[0].clone().cast::<i64>(), 0);
+        assert_eq!(result[5].clone().cast::<i64>(), 5);
+    }
+
+    #[test]
+    fn test_spill_method_form() {
+        let grid: Grid = DashMap::new();
+        let mut engine = Engine::new();
+        let spill_map: SpillMap = DashMap::new();
+        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
+
+        // Method form: (0..=3).SPILL()
+        let result: rhai::Array = engine.eval("(0..=3).SPILL()").unwrap();
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0].clone().cast::<i64>(), 0);
+        assert_eq!(result[3].clone().cast::<i64>(), 3);
+    }
+
+    #[test]
+    fn test_vec_range_respects_reverse_direction() {
+        let grid: Grid = DashMap::new();
+        grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
+        grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
+        grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
 
         let mut engine = Engine::new();
         let spill_map: SpillMap = DashMap::new();
         register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
 
-        let result: rhai::Array = engine
-            .eval("OUTPUT(vec_range(0, 0, 2, 0), |v| { v.sort(); v })")
-            .unwrap();
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0].clone().cast::<f64>(), 10.0);
-        assert_eq!(result[1].clone().cast::<f64>(), 20.0);
-        assert_eq!(result[2].clone().cast::<f64>(), 30.0);
+        // Forward direction: A1:A3 = [10, 20, 30]
+        let forward: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
+        assert_eq!(forward.len(), 3);
+        assert_eq!(forward[0].clone().cast::<f64>(), 10.0);
+        assert_eq!(forward[1].clone().cast::<f64>(), 20.0);
+        assert_eq!(forward[2].clone().cast::<f64>(), 30.0);
+
+        // Reverse direction: A3:A1 = [30, 20, 10]
+        let reverse: rhai::Array = engine.eval("vec_range(2, 0, 0, 0)").unwrap();
+        assert_eq!(reverse.len(), 3);
+        assert_eq!(reverse[0].clone().cast::<f64>(), 30.0);
+        assert_eq!(reverse[1].clone().cast::<f64>(), 20.0);
+        assert_eq!(reverse[2].clone().cast::<f64>(), 10.0);
+    }
+
+    #[test]
+    fn test_rand_returns_value_in_range() {
+        let grid: Grid = DashMap::new();
+        let mut engine = Engine::new();
+        let spill_map: SpillMap = DashMap::new();
+        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
+
+        // RAND() should return a value in [0.0, 1.0)
+        for _ in 0..100 {
+            let result: f64 = engine.eval("RAND()").unwrap();
+            assert!(result >= 0.0 && result < 1.0);
+        }
+    }
+
+    #[test]
+    fn test_randint_returns_value_in_range() {
+        let grid: Grid = DashMap::new();
+        let mut engine = Engine::new();
+        let spill_map: SpillMap = DashMap::new();
+        register_builtins(&mut engine, Arc::new(grid), Arc::new(spill_map));
+
+        // RANDINT(1, 6) should return a value in [1, 6]
+        for _ in 0..100 {
+            let result: i64 = engine.eval("RANDINT(1, 6)").unwrap();
+            assert!(result >= 1 && result <= 6);
+        }
     }
 }

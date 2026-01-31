@@ -8,9 +8,16 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::app::Mode;
 
+/// Available keybinding schemes.
+///
+/// Gridline supports two keybinding schemes:
+/// - [`Vim`](Keymap::Vim): hjkl navigation, `:` commands, modal editing
+/// - [`Emacs`](Keymap::Emacs): C-n/p/f/b navigation, M-x commands, C-SPC mark
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Keymap {
+    /// Vim-style keybindings (hjkl, :commands, modal editing).
     Vim,
+    /// Emacs-style keybindings (C-n/p/f/b, M-x commands).
     Emacs,
 }
 
@@ -24,34 +31,63 @@ impl Keymap {
     }
 }
 
+/// Actions that can be triggered by key presses.
+///
+/// Actions decouple key handling from application logic. The keymap translates
+/// key events into actions, which are then applied to the application state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
+    /// Cancel current operation and return to Normal mode.
     Cancel,
+    /// Enter Edit mode for the current cell.
     EnterEdit,
+    /// Commit the current edit and return to Normal mode.
     CommitEdit,
+    /// Enter Command mode (`:` prompt).
     EnterCommand,
+    /// Execute the command in the command buffer.
     ExecuteCommand,
+    /// Enter Visual selection mode.
     EnterVisual,
+    /// Exit Visual mode without action.
     ExitVisual,
+    /// Yank (copy) current cell or selection.
     Yank,
+    /// Paste clipboard at cursor position.
     Paste,
+    /// Undo the last action.
     Undo,
+    /// Redo the last undone action.
     Redo,
+    /// Clear the current cell.
     ClearCell,
+    /// Open plot modal for current cell.
     OpenPlot,
 
+    /// Move cursor by (dx, dy).
     Move(i32, i32),
+    /// Page up (-1) or down (+1).
     Page(i32),
+    /// Jump to first column.
     HomeCol,
+    /// Jump to last column.
     EndCol,
+    /// Jump to last row with data.
     GotoLast,
+    /// Open the goto cell prompt.
     OpenGotoPrompt,
 
+    /// Increase current column width.
     IncColWidth,
+    /// Decrease current column width.
     DecColWidth,
+    /// Save the file.
     Save,
 }
 
+/// Translate a key event to an action based on the current keymap and mode.
+///
+/// Returns `None` if the key has no binding in the current context.
 pub fn translate(keymap: Keymap, mode: Mode, key: KeyEvent) -> Option<Action> {
     match keymap {
         Keymap::Vim => translate_vim(mode, key),

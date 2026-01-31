@@ -1,9 +1,10 @@
 //! UI rendering
 
 use super::app::{App, Mode};
+use super::help::{get_commands_help, get_help_text};
 use super::keymap::Keymap;
 use gridline_engine::engine::CellRef;
-use gridline_engine::plot::{PLOT_PREFIX, PlotKind, PlotSpec, parse_plot_spec};
+use gridline_engine::plot::{PLOT_PREFIX, PlotData, PlotKind, PlotSpec, parse_plot_spec};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -40,6 +41,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     if let Some(spec) = app.plot_modal.clone() {
         draw_plot_modal(f, app, &spec);
+    }
+
+    if app.help_modal {
+        draw_help_modal(f, app);
     }
 }
 
@@ -254,17 +259,28 @@ fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
         None
     };
 
-    let plot_height_chars = inner_height.saturating_sub(if labels_line.is_some() { 1 } else { 0 });
+    // Reserve space for labels and warnings
+    let has_labels = labels_line.is_some();
+    let plot_height_chars = inner_height.saturating_sub(if has_labels { 2 } else { 1 });
     let plot_height_points = (plot_height_chars as u32).saturating_mul(4);
 
     let content = if plot_width_points < 32 || plot_height_points < 3 {
         "Terminal too small for plot".to_string()
     } else {
-        let frame = render_plot_frame(app, spec, plot_width_points, plot_height_points);
-        if let Some(labels) = labels_line {
-            format!("{}\n{}", labels, frame)
-        } else {
-            frame
+        // Prepare plot data using PlotData
+        match prepare_plot_data(app, spec) {
+            Ok(data) => {
+                let mut parts = Vec::new();
+                if let Some(labels) = &labels_line {
+                    parts.push(labels.clone());
+                }
+                parts.push(render_textplots(&data, plot_width_points, plot_height_points));
+                if !data.warnings.is_empty() {
+                    parts.push(format!("Warning: {}", data.warnings.join("; ")));
+                }
+                parts.join("\n")
+            }
+            Err(e) => e,
         }
     };
 
@@ -275,88 +291,38 @@ fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
     f.render_widget(paragraph, area);
 }
 
-fn parse_cell_as_f64_or_zero(app: &mut App, r: usize, c: usize) -> f64 {
-    let s = app.get_cell_display(&CellRef::new(r, c));
-    s.parse::<f64>().unwrap_or(0.0)
+/// Parse a cell as a numeric value for plotting.
+/// Returns `Some(value)` if the cell contains a valid number, `None` otherwise.
+fn cell_value_for_plot(app: &mut App, row: usize, col: usize) -> Option<f64> {
+    let s = app.get_cell_display(&CellRef::new(row, col));
+    s.parse::<f64>().ok()
 }
 
-fn render_plot_frame(app: &mut App, spec: &PlotSpec, width: u32, height: u32) -> String {
-    let r1 = spec.r1.min(spec.r2);
-    let r2 = spec.r1.max(spec.r2);
-    let c1 = spec.c1.min(spec.c2);
-    let c2 = spec.c1.max(spec.c2);
+/// Prepare plot data from a spec using the app's cell accessor.
+fn prepare_plot_data(app: &mut App, spec: &PlotSpec) -> Result<PlotData, String> {
+    PlotData::from_spec(spec, |r, c| cell_value_for_plot(app, r, c))
+}
 
-    let points: Vec<(f32, f32)> = match spec.kind {
-        PlotKind::Scatter => {
-            if c2.saturating_sub(c1) != 1 {
-                return "SCATTER expects a 2-column range".to_string();
-            }
-            let mut pts = Vec::new();
-            for r in r1..=r2 {
-                let x = parse_cell_as_f64_or_zero(app, r, c1) as f32;
-                let y = parse_cell_as_f64_or_zero(app, r, c2) as f32;
-                pts.push((x, y));
-            }
-            pts
-        }
-        PlotKind::Bar | PlotKind::Line => {
-            let mut ys = Vec::new();
-            if r1 == r2 {
-                for c in c1..=c2 {
-                    ys.push(parse_cell_as_f64_or_zero(app, r1, c) as f32);
-                }
-            } else if c1 == c2 {
-                for r in r1..=r2 {
-                    ys.push(parse_cell_as_f64_or_zero(app, r, c1) as f32);
-                }
-            } else {
-                for r in r1..=r2 {
-                    for c in c1..=c2 {
-                        ys.push(parse_cell_as_f64_or_zero(app, r, c) as f32);
-                    }
-                }
-            }
+/// Render plot data to a string using textplots.
+///
+/// This function isolates the textplots dependency, making it easy to swap
+/// for a different renderer (e.g., a GUI library).
+fn render_textplots(data: &PlotData, width: u32, height: u32) -> String {
+    let (xmin, xmax) = data.x_range;
+    let (ymin, ymax) = data.y_range;
+    let span_x = xmax - xmin;
+    let span_y = ymax - ymin;
 
-            ys.into_iter()
-                .enumerate()
-                .map(|(i, y)| (i as f32, y))
-                .collect()
-        }
-    };
-
-    if points.is_empty() {
-        return "No data".to_string();
-    }
-
-    // textplots draws axes at x=0 and y=0. To get a conventional bottom-left axis
-    // even when data doesn't cross 0, we shift points so the minimums map to 0,
-    // and then format labels back to the original domain/range.
-    let (mut xmin0, mut xmax0) = (points[0].0, points[0].0);
-    let (mut ymin0, mut ymax0) = (points[0].1, points[0].1);
-    for (x, y) in &points {
-        xmin0 = xmin0.min(*x);
-        xmax0 = xmax0.max(*x);
-        ymin0 = ymin0.min(*y);
-        ymax0 = ymax0.max(*y);
-    }
-
-    let mut span_x = xmax0 - xmin0;
-    let mut span_y = ymax0 - ymin0;
-    if span_x == 0.0 {
-        span_x = 1.0;
-    }
-    if span_y == 0.0 {
-        span_y = 1.0;
-    }
-
-    let shifted_points: Vec<(f32, f32)> =
-        points.iter().map(|(x, y)| (x - xmin0, y - ymin0)).collect();
+    // Shift points so minimums map to 0 (textplots draws axes at x=0, y=0)
+    let shifted_points: Vec<(f32, f32)> = data
+        .points
+        .iter()
+        .map(|(x, y)| (x - xmin, y - ymin))
+        .collect();
 
     let mut chart = Chart::new_with_y_range(width, height, 0.0, span_x, 0.0, span_y);
 
-    // Important: textplots draws shapes onto its canvas only when `figures()` is called.
-    // Also, `axis()` relies on y-range which is computed when shapes are added.
-    let shape = match spec.kind {
+    let shape = match data.spec.kind {
         PlotKind::Bar => Shape::Bars(&shifted_points),
         PlotKind::Line => Shape::Lines(&shifted_points),
         PlotKind::Scatter => Shape::Points(&shifted_points),
@@ -364,10 +330,10 @@ fn render_plot_frame(app: &mut App, spec: &PlotSpec, width: u32, height: u32) ->
 
     let chart = chart
         .x_label_format(LabelFormat::Custom(Box::new(move |v| {
-            format!("{:.1}", v + xmin0)
+            format!("{:.1}", v + xmin)
         })))
         .y_label_format(LabelFormat::Custom(Box::new(move |v| {
-            format!("{:.1}", v + ymin0)
+            format!("{:.1}", v + ymin)
         })))
         .x_axis_style(LineStyle::Solid)
         .y_axis_style(LineStyle::Solid)
@@ -413,5 +379,60 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
 
     let spans = vec![Span::styled(status, style)];
     let paragraph = Paragraph::new(Line::from(spans));
+    f.render_widget(paragraph, area);
+}
+
+fn draw_help_modal(f: &mut Frame, app: &App) {
+    let area = centered_rect(70, 80, f.area());
+
+    let modal_style = Style::default().fg(Color::White).bg(Color::Black);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Help (Esc to close) ")
+        .border_style(Style::default().fg(Color::Green))
+        .style(modal_style);
+
+    // Combine keybindings and commands help
+    let mut lines: Vec<Line> = Vec::new();
+
+    for text in get_help_text(app.keymap) {
+        let style = if text.starts_with("===") {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if text.starts_with("  ") {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        };
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+
+    // Add separator
+    lines.push(Line::from(""));
+
+    for text in get_commands_help() {
+        let style = if text.starts_with("===") {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if text.starts_with("  ") {
+            Style::default().fg(Color::White)
+        } else if text.starts_with("Press") {
+            Style::default().fg(Color::DarkGray)
+        } else {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        };
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+
+    let paragraph = Paragraph::new(lines).block(block).style(modal_style);
+
+    f.render_widget(Clear, area);
     f.render_widget(paragraph, area);
 }

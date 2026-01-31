@@ -1,4 +1,14 @@
 //! Spreadsheet engine API.
+//!
+//! This module provides the core computation engine for the spreadsheet:
+//!
+//! - [`Cell`], [`CellType`], [`Grid`] - Data structures for cell storage
+//! - [`CellRef`] - Cell reference parsing (A1 notation ↔ row/col indices)
+//! - [`detect_cycle`] - Circular dependency detection
+//! - [`extract_dependencies`] - Parse formula dependencies
+//! - [`preprocess_script`] - Transform formulas for Rhai evaluation
+//! - [`create_engine`] - Create a Rhai engine with built-in functions
+//! - [`format_dynamic`] - Format values for display
 
 mod cell;
 mod cell_ref;

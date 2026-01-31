@@ -1,6 +1,23 @@
 // Example custom functions for Gridline
 // Load with: gridline -f examples/functions.rhai
 // Or at runtime: :source examples/functions.rhai
+//
+// Built-in functions (ALLCAPS):
+//   SUM, AVG, COUNT, MIN, MAX  - range aggregations
+//   VEC                        - range to array
+//   BARCHART, LINECHART, SCATTER - plots
+//   SPILL                      - convert range to array, e.g. (0..=10).SPILL()
+//
+// Rhai array methods you can use:
+//   .order()      - returns sorted copy (ascending)
+//   .order_desc() - returns sorted copy (descending)
+//   .filter(|x| ...) - filter elements
+//   .map(|x| ...)    - transform elements
+//
+// Examples:
+//   =VEC(A1:A10).order().SPILL()
+//   =VEC(A1:A10).filter(|x| x > 5).SPILL()
+//   =(1..=10).map(|x| x * x).SPILL()
 
 // Simple utility functions
 fn square(x) { x * x }

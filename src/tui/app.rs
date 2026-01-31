@@ -1,4 +1,9 @@
-//! Application state and logic
+//! Application state and logic.
+//!
+//! This module contains the main [`App`] struct which holds all application state
+//! including the spreadsheet grid, cursor position, editing buffers, and UI state.
+//! The app operates in different [`Mode`]s (Normal, Edit, Command, Visual) similar
+//! to Vim's modal editing.
 
 use crate::error::Result;
 use crate::storage::{parse_csv, parse_grd, write_csv, write_grd};
@@ -40,16 +45,34 @@ pub struct Clipboard {
     pub height: usize,
 }
 
-/// Application mode
+/// Modal editing state for the application.
+///
+/// Similar to Vim, the application operates in different modes:
+/// - [`Normal`](Mode::Normal): Navigate and execute commands
+/// - [`Edit`](Mode::Edit): Edit cell contents
+/// - [`Command`](Mode::Command): Enter ex-style commands (`:w`, `:q`, etc.)
+/// - [`Visual`](Mode::Visual): Select cell ranges
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
+    /// Navigate the grid, execute single-key commands.
     Normal,
+    /// Edit the contents of the current cell.
     Edit,
+    /// Enter ex-style commands (`:w`, `:q`, `:wq`, etc.).
     Command,
+    /// Select a range of cells for yank/paste operations.
     Visual,
 }
 
-/// Application state
+/// Main application state container.
+///
+/// Holds all state for the spreadsheet application including:
+/// - The cell grid and Rhai evaluation engine
+/// - Cursor position and viewport
+/// - Editing and command buffers
+/// - Undo/redo history
+/// - Clipboard for yank/paste
+/// - Modal UI state (plot, help)
 pub struct App {
     /// The spreadsheet grid
     pub grid: Arc<Grid>,
@@ -168,6 +191,10 @@ impl App {
 
     pub fn close_plot_modal(&mut self) {
         self.plot_modal = None;
+    }
+
+    pub fn close_help_modal(&mut self) {
+        self.help_modal = false;
     }
 
     pub fn open_plot_modal_at_cursor(&mut self) {
@@ -1071,8 +1098,10 @@ impl App {
         }
     }
 
-    /// Execute a command
-    pub fn execute_command(&mut self) {
+    /// Execute a command entered in command mode.
+    ///
+    /// Returns `true` if the application should quit, `false` otherwise.
+    pub fn execute_command(&mut self) -> bool {
         let cmd = self.command_buffer.trim().to_string();
         self.command_buffer.clear();
         self.mode = Mode::Normal;
@@ -1087,14 +1116,12 @@ impl App {
                     self.status_message =
                         "Unsaved changes! Use :q! to force quit or :wq to save and quit"
                             .to_string();
-                } else {
-                    // Signal quit via status (will be handled by run loop)
-                    self.status_message = "QUIT".to_string();
+                    return false;
                 }
+                return true;
             }
             "q!" => {
-                self.modified = false; // Force quit
-                self.status_message = "QUIT".to_string();
+                return true;
             }
             "w" | "save" => {
                 if let Some(path) = args {
@@ -1105,7 +1132,7 @@ impl App {
             "wq" => {
                 self.save_file();
                 if !self.modified {
-                    self.status_message = "QUIT".to_string();
+                    return true;
                 }
             }
             "e" | "open" => {
@@ -1200,10 +1227,14 @@ impl App {
             "dc" | "deletecol" => {
                 self.delete_column();
             }
+            "help" | "h" => {
+                self.help_modal = true;
+            }
             _ => {
                 self.status_message = format!("Unknown command: {}", command);
             }
         }
+        false
     }
 
     /// Save to current file path

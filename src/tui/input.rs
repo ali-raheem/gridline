@@ -2,7 +2,7 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use std::io;
 
-use super::actions::{apply_action, handle_command_text, handle_edit_text};
+use super::actions::{apply_action, handle_command_text, handle_edit_text, ApplyResult};
 use super::app::{App, Mode};
 use super::keymap::translate;
 use super::ui;
@@ -25,6 +25,20 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                 continue;
             }
 
+            // Help modal takes over input
+            if app.help_modal {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        app.close_help_modal();
+                    }
+                    KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.close_help_modal();
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
             // Handle quit
             if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
                 if !app.modified || app.confirm_quit {
@@ -40,7 +54,9 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
             app.confirm_quit = false;
 
             if let Some(action) = translate(app.keymap, app.mode, key) {
-                apply_action(app, action, key);
+                if apply_action(app, action, key) == ApplyResult::Quit {
+                    return Ok(());
+                }
                 continue;
             }
 

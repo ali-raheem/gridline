@@ -1,3 +1,11 @@
+//! Cell data structures for the spreadsheet grid.
+//!
+//! This module provides the core data types for representing cells:
+//! - [`CellType`] - The type of content in a cell (empty, text, number, or formula)
+//! - [`Cell`] - A cell with content, dependencies, and cached evaluation state
+//! - [`Grid`] - Thread-safe sparse storage for cells (backed by `DashMap`)
+//! - [`SpillMap`] - Thread-safe storage for array formula spill values
+
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 

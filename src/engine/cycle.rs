@@ -1,3 +1,10 @@
+//! Circular dependency detection for formula cells.
+//!
+//! When a formula is entered, we must verify it doesn't create a cycle
+//! (e.g., A1 references B1, B1 references C1, C1 references A1).
+//! This module uses depth-first search to detect such cycles before
+//! they cause infinite evaluation loops.
+
 use std::collections::HashSet;
 
 use super::{CellRef, Grid};
