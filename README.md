@@ -96,7 +96,7 @@ cargo run -- -f lib1.rhai -f lib2.rhai examples/plot.grid
 
 Auto-load a default functions file if present:
 - config directory `gridline/default.rhai` (platform-specific)
-  - Linux: `~/.config/gridline/default.rhai`
+  - Linux: Will be either `~/.gridline/default.rhai` or `~/.config/gridline/default.rhai`
   - macOS: `~/Library/Application Support/me.shoryuken.gridline/default.rhai`
   - Windows: `%APPDATA%\\shoryuken\\gridline\\config\\default.rhai`
 
