@@ -98,7 +98,7 @@ Auto-load a default functions file if present:
 - config directory `gridline/default.rhai` (platform-specific)
   - Linux: `~/.config/gridline/default.rhai`
   - macOS: `~/Library/Application Support/gridline/default.rhai`
-  - Windows: `%APPDATA%\\gridline\\default.rhai`
+  - Windows: `%APPDATA%\\gridline\\gridline\\config\\default.rhai`
 
 Load or reload functions at runtime:
 

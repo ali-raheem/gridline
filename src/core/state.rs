@@ -100,7 +100,7 @@ impl Core {
     }
 
     fn load_default_functions(&mut self) {
-        let Some(proj) = ProjectDirs::from("", "", "gridline") else {
+        let Some(proj) = ProjectDirs::from("com", "gridline", "gridline") else {
             return;
         };
         let mut path = proj.config_dir().to_path_buf();
