@@ -6,7 +6,9 @@
 
 # Gridline ✨
 
-Gridline is a proof-of-concept terminal spreadsheet with Rhai support. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). Your sheet lives in a plain text file, and your reusable logic can live in a separate `.rhai` functions file.
+Gridline is a terminal spreadsheet with Rhai support. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). Your sheet lives in a plain text file, and your reusable logic can live in a separate `.rhai` functions file.
+
+Interfaces: TUI is the default and primary experience (`cargo run`, `cargo install gridline`). The GUI is behind a feature flag and is a work in progress. `webui` is a planned future interface.
 
 What you get (today):
 - TUI grid with a formula bar and command mode
@@ -22,8 +24,6 @@ What you get (today):
 - Row/column insertion and deletion
 - Simple plotting in a modal (bar/line/scatter)
 - Interactive help system (`:help`)
-
-Project status: this is a POC. Expect rough edges (especially around plotting and any non-trivial spreadsheet ergonomics).
 
 Why it's fun:
 - 🧾 Plain-text sheets you can diff and version
@@ -68,6 +68,12 @@ Open an example file:
 
 ```bash
 cargo run -- examples/plot.grid
+
+# GUI (work in progress)
+cargo run --features gui --bin gridline-gui -- examples/plot.grid
+
+# WebUI (stub / future)
+cargo run --features webui --bin gridline-webui
 ```
 
 ### Command-line Evaluation
@@ -95,10 +101,9 @@ cargo run -- -f lib1.rhai -f lib2.rhai examples/plot.grid
 ```
 
 Auto-load a default functions file if present:
-- config directory `gridline/default.rhai` (platform-specific)
-  - Linux: Will be either `~/.gridline/default.rhai` or `~/.config/gridline/default.rhai`
-  - macOS: `~/Library/Application Support/me.shoryuken.gridline/default.rhai`
-  - Windows: `%APPDATA%\\shoryuken\\gridline\\config\\default.rhai`
+- Gridline will auto-load `default.rhai` from your OS config directory (resolved via `directories::ProjectDirs`) if it exists.
+  - Linux: typically `~/.config/gridline/default.rhai`
+  - Disable with `--no-default-functions`
 
 Load or reload functions at runtime:
 
@@ -209,7 +214,7 @@ Command mode:
 - `:q` - quit (warns if modified)
 - `:q!` - force quit
 - `:wq` - save and quit
-- `:e <path>` (alias `:open`) - open file
+- `:e <path>` (alias `:open`, `:load`) - open file
 - `:import <file.csv>` - import CSV data at current cursor position
 - `:export <file.csv>` - export grid to CSV format
 
@@ -247,7 +252,7 @@ Keymap files (optional):
   - Windows: `%APPDATA%\\gridline\\keymaps.toml`
 
 Sample keymap file:
-- `docs/keymaps.toml`
+- `examples/keymaps.toml`
 
 Status bar has an always-on cheat sheet, but the core controls are:
 
@@ -284,7 +289,7 @@ Use `:w` and `:q` in command mode for save/quit operations.
 
 ## File Formats 📁
 
-### Grid Files (.grid)
+### Grid Files (.grd / .grid)
 
 Plain text format with one cell per line:
 
