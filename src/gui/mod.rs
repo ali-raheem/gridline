@@ -179,6 +179,7 @@ impl eframe::App for GridlineGuiApp {
             if !self.state.editing {
                 if let Some(action) = handle_keyboard_input(ctx) {
                     self.handle_action(action);
+                    ctx.request_repaint(); // Ensure GUI updates after action
                 }
             }
 

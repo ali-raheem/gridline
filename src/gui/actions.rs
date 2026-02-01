@@ -139,28 +139,13 @@ pub fn apply_action(app: &mut GuiApp, state: &mut GuiState, action: Action) {
         }
 
         Action::Undo => {
-            match app.undo() {
-                Ok(()) => {
-                    eprintln!("DEBUG: Undo succeeded");
-                    state.ensure_selected_visible(&app.selected);
-                }
-                Err(e) => {
-                    eprintln!("DEBUG: Undo failed: {}", e);
-                }
-            }
+            let _ = app.undo();
+            state.ensure_selected_visible(&app.selected);
         }
 
         Action::Redo => {
-            eprintln!("DEBUG: Attempting redo...");
-            match app.redo() {
-                Ok(()) => {
-                    eprintln!("DEBUG: Redo succeeded, selected cell: {}", app.selected);
-                    state.ensure_selected_visible(&app.selected);
-                }
-                Err(e) => {
-                    eprintln!("DEBUG: Redo failed: {}", e);
-                }
-            }
+            let _ = app.redo();
+            state.ensure_selected_visible(&app.selected);
         }
 
         Action::Save => {
