@@ -7,8 +7,8 @@
 //! - [`SpillMap`] - Thread-safe storage for array formula spill values
 
 use dashmap::DashMap;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use super::cell_ref::CellRef;
 use super::deps::extract_dependencies;

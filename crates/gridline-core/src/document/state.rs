@@ -1,11 +1,9 @@
 use crate::error::Result;
-use directories::ProjectDirs;
 use gridline_engine::engine::{
-    AST, Cell, CellRef, Grid, ValueCache, create_engine_with_functions_and_cache,
+    create_engine_with_functions_and_cache, Cell, CellRef, Grid, ValueCache, AST,
 };
 use rhai::Engine;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::PathBuf;
 
 /// Maximum number of undo entries to keep
@@ -19,8 +17,8 @@ pub struct UndoAction {
     pub new_cell: Option<Cell>,
 }
 
-/// UI-agnostic core state for the spreadsheet.
-pub struct Core {
+/// UI-agnostic document state for the spreadsheet.
+pub struct Document {
     /// The spreadsheet grid (DashMap is internally Arc-based, clones are cheap)
     pub grid: Grid,
     /// Rhai engine for evaluating formulas
@@ -49,18 +47,17 @@ pub struct Core {
     pub redo_stack: Vec<UndoAction>,
 }
 
-impl Core {
-    /// Create a new core state
+impl Document {
+    /// Create a new document state.
+    ///
+    /// This constructor is side-effect free: it does not touch the filesystem.
     pub fn new() -> Self {
         let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         let value_cache = ValueCache::default();
-        let (engine, _, _) = create_engine_with_functions_and_cache(
-            grid.clone(),
-            value_cache.clone(),
-            None,
-        );
+        let (engine, _, _) =
+            create_engine_with_functions_and_cache(grid.clone(), value_cache.clone(), None);
 
-        let mut core = Core {
+        let core = Document {
             grid,
             engine,
             file_path: None,
@@ -75,11 +72,10 @@ impl Core {
             redo_stack: Vec::new(),
         };
 
-        core.load_default_functions();
         core
     }
 
-    /// Create core and load file if provided
+    /// Create a new document and load a file if provided.
     pub fn with_file(path: Option<PathBuf>, functions_files: Vec<PathBuf>) -> Result<Self> {
         let mut core = Self::new();
 
@@ -97,38 +93,6 @@ impl Core {
             }
         }
         Ok(core)
-    }
-
-    fn load_default_functions(&mut self) {
-        let Some(proj) = ProjectDirs::from("me", "shoryuken", "gridline") else {
-            return;
-        };
-        let mut path = proj.config_dir().to_path_buf();
-        path.push("default.rhai");
-        if path.exists() {
-            self.load_functions_silent(&path);
-        }
-    }
-
-    fn load_functions_silent(&mut self, path: &std::path::Path) {
-        if let Ok(content) = fs::read_to_string(path) {
-            let path_buf = path.to_path_buf();
-            if !self.functions_files.contains(&path_buf) {
-                self.functions_files.push(path_buf);
-            }
-            match &mut self.custom_functions {
-                Some(existing) => {
-                    existing.push_str("\n\n");
-                    existing.push_str(&content);
-                }
-                None => {
-                    self.custom_functions = Some(content);
-                }
-            }
-            // Recreate engine because custom functions changed
-            let _ = self.recreate_engine_with_functions();
-        }
-        // Silently ignore errors for default functions
     }
 
     /// Recreate the Rhai engine with updated custom functions.
@@ -162,7 +126,7 @@ impl Core {
     }
 }
 
-impl Default for Core {
+impl Default for Document {
     fn default() -> Self {
         Self::new()
     }

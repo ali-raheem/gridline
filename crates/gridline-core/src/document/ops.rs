@@ -1,6 +1,6 @@
-use super::{Core, UndoAction};
+use super::{Document, UndoAction};
 use crate::error::{GridlineError, Result};
-use gridline_engine::engine::{Cell, CellRef, CellType, ShiftOperation, shift_formula_references};
+use gridline_engine::engine::{shift_formula_references, Cell, CellRef, CellType, ShiftOperation};
 
 /// Dimension for row/column operations
 #[derive(Copy, Clone)]
@@ -27,7 +27,7 @@ impl Dimension {
     }
 }
 
-impl Core {
+impl Document {
     /// Mark all cells that depend (transitively) on the changed cell as dirty
     fn mark_dependents_dirty(&mut self, changed_cell: &CellRef) {
         let mut to_process = vec![changed_cell.clone()];
@@ -300,7 +300,6 @@ impl Core {
         self.delete_dimension(Dimension::Column, at_col);
     }
 
-
     /// Undo the last action
     pub fn undo(&mut self) -> Result<()> {
         let action = self.undo_stack.pop().ok_or(GridlineError::NothingToUndo)?;
@@ -396,16 +395,17 @@ impl Core {
 
 #[cfg(test)]
 mod tests {
-    use super::Core;
+    use super::Document;
     use gridline_engine::engine::CellRef;
 
     #[test]
     fn test_delete_column_clears_spill_state() {
-        let mut core = Core::new();
+        let mut core = Document::new();
         core.set_cell_from_input(CellRef::new(0, 1), "1").unwrap(); // B1
         core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
         core.set_cell_from_input(CellRef::new(2, 1), "3").unwrap(); // B3
-        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)").unwrap(); // A1
+        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
+            .unwrap(); // A1
 
         let _ = core.get_cell_display(&CellRef::new(0, 0));
         assert!(core.value_cache.contains_key(&CellRef::new(1, 0)));
@@ -418,11 +418,12 @@ mod tests {
 
     #[test]
     fn test_spill_conflict_clears_stale_spill() {
-        let mut core = Core::new();
+        let mut core = Document::new();
         core.set_cell_from_input(CellRef::new(0, 1), "1").unwrap(); // B1
         core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
         core.set_cell_from_input(CellRef::new(2, 1), "3").unwrap(); // B3
-        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)").unwrap(); // A1
+        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
+            .unwrap(); // A1
 
         let _ = core.get_cell_display(&CellRef::new(0, 0));
         let spill_cell = CellRef::new(1, 0); // A2
@@ -430,7 +431,8 @@ mod tests {
         assert!(core.value_cache.contains_key(&spill_cell));
 
         // Introduce a conflict in the spill range.
-        core.set_cell_from_input(spill_cell.clone(), "\"x\"").unwrap();
+        core.set_cell_from_input(spill_cell.clone(), "\"x\"")
+            .unwrap();
 
         // Force A1 to re-evaluate without clearing spill state first.
         if let Some(mut cell) = core.grid.get_mut(&CellRef::new(0, 0)) {

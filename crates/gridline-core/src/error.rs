@@ -1,4 +1,4 @@
-//! Error types for the Gridline application
+//! Error types for Gridline core.
 
 use thiserror::Error;
 
