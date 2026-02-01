@@ -31,6 +31,10 @@ fn sign(x) { if x < 0 { -1 } else if x > 0 { 1 } else { 0 } }
 fn clamp(x, min, max) { if x < min { min } else if x > max { max } else { x } }
 fn fib(n) { if n < 2 { n } else { fib(n-1) + fib(n-2) } }
 
+fn affine(v, mini, maxi, mino, maxo) {
+   ((v.to_float() - mini.to_float()) / (maxi.to_float() - mini.to_float()) ) * (maxo.to_float() - mino.to_float()) + mino.to_float()
+}
+
 // Financial functions
 fn pmt(rate, periods, principal) {
     // Payment for a loan (matches Excel/Sheets PMT)
