@@ -7,6 +7,8 @@ fn run_command(args: &[&str]) -> (String, String, i32) {
         .arg("run")
         .arg("-q")
         .arg("--")
+        // Tests must be deterministic and not depend on a user's ~/.config/gridline/default.rhai.
+        .arg("--no-default-functions")
         .args(args)
         .output()
         .expect("Failed to execute command");
@@ -48,7 +50,10 @@ fn test_array_reduce() {
 
 #[test]
 fn test_complex_formula_sum_of_squares() {
-    let (stdout, _, code) = run_command(&["-c", "(0..=10).SPILL().map(|x| x*x).reduce(|x, y| x + y, 0)"]);
+    let (stdout, _, code) = run_command(&[
+        "-c",
+        "(0..=10).SPILL().map(|x| x*x).reduce(|x, y| x + y, 0)",
+    ]);
     assert_eq!(stdout.trim(), "385");
     assert_eq!(code, 0);
 }

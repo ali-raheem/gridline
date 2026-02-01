@@ -371,7 +371,17 @@ impl App {
                 for col in c1..=c2 {
                     let cell_ref = CellRef::new(row, col);
                     if let Some(cell) = self.core.grid.get(&cell_ref) {
+                        // Normal cells: preserve original input/formula.
                         cells.push((row - r1, col - c1, cell.clone()));
+                    } else if self.core.spill_sources.contains_key(&cell_ref)
+                        || self.core.value_cache.contains_key(&cell_ref)
+                    {
+                        // Spill output cells are not stored in the grid; copy their evaluated value.
+                        let display = self.core.get_cell_display(&cell_ref);
+                        if !display.is_empty() {
+                            let cell = gridline_engine::engine::Cell::from_input(&display);
+                            cells.push((row - r1, col - c1, cell));
+                        }
                     }
                 }
             }
@@ -388,7 +398,17 @@ impl App {
             // Yank single cell
             let cell_ref = self.current_cell_ref();
             if let Some(cell) = self.core.grid.get(&cell_ref) {
+                // Normal cells: preserve original input/formula.
                 cells.push((0, 0, cell.clone()));
+            } else if self.core.spill_sources.contains_key(&cell_ref)
+                || self.core.value_cache.contains_key(&cell_ref)
+            {
+                // Spill output cell: copy evaluated value.
+                let display = self.core.get_cell_display(&cell_ref);
+                if !display.is_empty() {
+                    let cell = gridline_engine::engine::Cell::from_input(&display);
+                    cells.push((0, 0, cell));
+                }
             }
             self.clipboard = Some(Clipboard {
                 cells,
@@ -512,7 +532,7 @@ impl App {
                     return true;
                 }
             }
-            "e" | "open" => {
+            "e" | "open" | "load" => {
                 if let Some(path) = args {
                     match self.core.load_file(&PathBuf::from(path)) {
                         Ok(()) => self.status_message = format!("Loaded {}", path),

@@ -4,6 +4,8 @@ use gridline_core::{CellRef, Document};
 use std::env;
 use std::path::PathBuf;
 
+mod default_functions;
+
 #[cfg(feature = "tui")]
 mod tui;
 
@@ -12,9 +14,25 @@ fn run_command_mode(
     formula: String,
     functions_files: Vec<PathBuf>,
     output_file: Option<PathBuf>,
+    no_default_functions: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create minimal document instance
     let mut doc = Document::new();
+
+    // Load default functions (if present)
+    if !no_default_functions {
+        if let Some(path) = default_functions::default_functions_path() {
+            if path.is_file() {
+                if let Err(e) = doc.load_functions(&path) {
+                    eprintln!(
+                        "Warning: failed to load default functions from {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+        }
+    }
 
     // Load custom functions
     for func_path in &functions_files {
@@ -101,6 +119,7 @@ fn print_usage() {
     eprintln!("Options:");
     eprintln!("  -c, --command <FORMULA>   Evaluate formula and print result");
     eprintln!("  -f, --functions <FILE>    Load custom Rhai functions (can be repeated)");
+    eprintln!("  --no-default-functions    Do not auto-load default.rhai from config dir");
     eprintln!("  -o, --output <FILE>       Export to markdown file (non-interactive)");
     eprintln!("  --keymap <name>           Select keybindings (default: vim)");
     eprintln!("  --keymap-file <path>      Load keybindings from TOML file");
@@ -116,6 +135,7 @@ fn main() {
     let mut keymap_name: Option<String> = None;
     let mut keymap_file: Option<PathBuf> = None;
     let mut command_formula: Option<String> = None;
+    let mut no_default_functions: bool = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -139,6 +159,9 @@ fn main() {
                     std::process::exit(1);
                 }
                 functions_files.push(PathBuf::from(&args[i]));
+            }
+            "--no-default-functions" => {
+                no_default_functions = true;
             }
             "-o" | "--output" => {
                 i += 1;
@@ -184,7 +207,7 @@ fn main() {
 
     // Command mode: evaluate formula and exit
     if let Some(formula) = command_formula {
-        if let Err(e) = run_command_mode(formula, functions_files, output_file) {
+        if let Err(e) = run_command_mode(formula, functions_files, output_file, no_default_functions) {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
@@ -193,13 +216,33 @@ fn main() {
 
     // Non-interactive markdown export from a file.
     if let Some(output_path) = output_file {
-        let mut doc = match Document::with_file(file_path, functions_files) {
+        let mut doc = match Document::with_file(file_path, Vec::new()) {
             Ok(doc) => doc,
             Err(e) => {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
             }
         };
+
+        // Autoload default functions first, then user-specified functions.
+        if !no_default_functions {
+            if let Some(path) = default_functions::default_functions_path() {
+                if path.is_file() {
+                    if let Err(e) = doc.load_functions(&path) {
+                        eprintln!(
+                            "Warning: failed to load default functions from {}: {}",
+                            path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        for func_path in &functions_files {
+            if let Err(e) = doc.load_functions(func_path) {
+                eprintln!("Warning: failed to load functions from {:?}: {}", func_path, e);
+            }
+        }
 
         if let Err(e) = gridline_core::storage::write_markdown(&output_path, &mut doc) {
             eprintln!("Error: {}", e);
@@ -212,12 +255,16 @@ fn main() {
     // Interactive mode.
     #[cfg(feature = "tui")]
     {
+        // Prepend default.rhai so TUI and GUI share the same defaults.
+        let mut all_functions = functions_files;
+        default_functions::prepend_default_functions_if_present(&mut all_functions, no_default_functions);
+
         let (keymap, warnings) = tui::load_keymap(keymap_name.as_deref(), keymap_file.as_ref());
         for warning in warnings {
             eprintln!("Warning: {}", warning);
         }
 
-        let mut app = match tui::App::with_file(file_path, functions_files, keymap) {
+        let mut app = match tui::App::with_file(file_path, all_functions, keymap) {
             Ok(app) => app,
             Err(e) => {
                 eprintln!("Error: {}", e);

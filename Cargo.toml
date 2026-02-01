@@ -7,7 +7,7 @@ members = [
 
 [package]
 name = "gridline"
-version = "0.1.9"
+version = "0.2.0"
 edition = "2024"
 authors = ["Ali Raheem"]
 repository = "https://github.com/ali-raheem/gridline"
@@ -39,11 +39,10 @@ tui = [
   "dep:textplots",
   "dep:toml",
   "dep:serde",
-  "dep:directories",
 ]
 
 # Desktop GUI
-gui = ["dep:eframe"]
+gui = ["dep:eframe", "dep:arboard"]
 
 # Placeholder for future web UI
 webui = []
@@ -51,6 +50,9 @@ webui = []
 [dependencies]
 gridline-core = { path = "crates/gridline-core" }
 gridline-engine = { path = "crates/gridline-engine" }
+
+# Used by CLI/GUI for locating config dir (default.rhai).
+directories = "6"
 
 # Shared (non-UI) deps for the CLI
 thiserror = "2.0"
@@ -61,7 +63,10 @@ crossterm = { version = "0.28", optional = true }
 textplots = { version = "0.8", optional = true }
 toml = { version = "0.8", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
-directories = { version = "6", optional = true }
 
 # Optional GUI deps
-eframe = { version = "0.30", default-features = false, features = ["glow", "x11"], optional = true }
+#
+# We use the wgpu renderer by default because it tends to be more reliable
+# across Linux driver stacks than the glow/glutin path.
+eframe = { version = "0.30", default-features = false, features = ["wgpu", "x11", "default_fonts"], optional = true }
+arboard = { version = "3.6", optional = true }
