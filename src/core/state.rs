@@ -107,7 +107,9 @@ impl Core {
         path.push("default.rhai");
         if path.exists() {
             self.load_functions_silent(&path);
-        }
+        }else{
+	    eprintln!("Tried to load functions from {}.", path.display());
+	}
     }
 
     fn load_functions_silent(&mut self, path: &std::path::Path) {
