@@ -112,7 +112,8 @@ impl Cell {
 }
 
 /// Thread-safe sparse grid storage.
-pub type Grid = DashMap<CellRef, Cell>;
+/// Wrapped in Arc so clones share the same underlying data.
+pub type Grid = std::sync::Arc<DashMap<CellRef, Cell>>;
 
 /// Thread-safe cache for computed cell values (both scalars and arrays).
 /// Maps cell positions to their evaluated Dynamic values.

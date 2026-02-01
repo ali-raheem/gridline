@@ -116,9 +116,7 @@ impl Core {
         self.value_cache.clear();
         self.spill_sources.clear();
         self.invalidate_script_cache();
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
         Ok(count)
     }
@@ -155,7 +153,7 @@ impl Core {
         self.value_cache.clear();
         self.spill_sources.clear();
         self.invalidate_script_cache();
-        let _ = self.recreate_engine_with_functions();
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
         Ok(count)
     }

@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_sum_range_uses_script_values() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(1.0));
         grid.insert(CellRef::new(1, 0), Cell::new_script("A1 + 1"));
 
@@ -683,7 +683,7 @@ mod tests {
 
     #[test]
     fn test_sum_range_prefers_value_cache() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("unknown_func()"));
 
         let value_cache = ValueCache::default();
@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn test_plot_spec_builtins_return_tagged_string() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let mut engine = Engine::new();
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
@@ -709,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_vec_range_returns_array() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn test_vec_range_with_map() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
 
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_vec_range_with_filter() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(5.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(15.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(25.0));
@@ -765,7 +765,7 @@ mod tests {
 
     #[test]
     fn test_vec_range_reads_from_value_cache() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
 
         let value_cache = ValueCache::default();
@@ -786,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_spill_array_identity() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
@@ -805,7 +805,7 @@ mod tests {
 
     #[test]
     fn test_spill_exclusive_range() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let mut engine = Engine::new();
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
@@ -819,7 +819,7 @@ mod tests {
 
     #[test]
     fn test_spill_inclusive_range() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let mut engine = Engine::new();
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
@@ -833,7 +833,7 @@ mod tests {
 
     #[test]
     fn test_spill_method_form() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let mut engine = Engine::new();
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
@@ -847,7 +847,7 @@ mod tests {
 
     #[test]
     fn test_vec_range_respects_reverse_direction() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
@@ -873,7 +873,7 @@ mod tests {
 
     #[test]
     fn test_rand_returns_value_in_range() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let mut engine = Engine::new();
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
@@ -887,7 +887,7 @@ mod tests {
 
     #[test]
     fn test_randint_returns_value_in_range() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let mut engine = Engine::new();
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
@@ -901,7 +901,7 @@ mod tests {
 
     #[test]
     fn test_sumif_range() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
@@ -922,7 +922,7 @@ mod tests {
 
     #[test]
     fn test_countif_range() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));

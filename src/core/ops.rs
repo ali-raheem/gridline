@@ -117,10 +117,7 @@ impl Core {
         // Clear any spill originating from this cell
         self.clear_spill_from(&cell_ref);
 
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
 
         // Mark dependent cells as dirty
@@ -138,9 +135,6 @@ impl Core {
 
             // Clear any spill originating from this cell
             self.clear_spill_from(cell_ref);
-
-            // Rebuild engine so builtins see updated grid
-            let _ = self.recreate_engine_with_functions();
 
             // Rebuild dependencies
             self.rebuild_dependents();
@@ -201,9 +195,7 @@ impl Core {
         self.spill_sources.clear();
         self.value_cache.clear();
         self.invalidate_script_cache();
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
         self.modified = true;
     }
@@ -283,9 +275,7 @@ impl Core {
         self.spill_sources.clear();
         self.value_cache.clear();
         self.invalidate_script_cache();
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
         self.modified = true;
     }
@@ -335,9 +325,7 @@ impl Core {
             }
         }
 
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
         self.mark_dependents_dirty(&cell_ref);
         Ok(())
@@ -367,9 +355,7 @@ impl Core {
             }
         }
 
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
         self.mark_dependents_dirty(&cell_ref);
         Ok(())
@@ -395,9 +381,7 @@ impl Core {
         }
 
         self.modified = true;
-        // Rebuild engine so builtins see updated grid
-        let _ = self.recreate_engine_with_functions();
-        // Rebuild dependencies
+        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
 
         let count = pasted_cells.len();

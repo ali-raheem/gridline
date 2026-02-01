@@ -13,7 +13,7 @@ pub fn parse_grd(path: &Path) -> Result<Grid> {
 
 /// Parse .grd content from a string
 pub fn parse_grd_content(content: &str) -> Result<Grid> {
-    let grid = Grid::new();
+    let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
 
     for (line_num, line) in content.lines().enumerate() {
         let line = line.trim();

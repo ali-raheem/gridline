@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_detect_cycle_no_cycle() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(0, 1), Cell::new_number(20.0));
         grid.insert(CellRef::new(0, 2), Cell::new_script("A1 + B1"));
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_detect_cycle_direct() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("B1"));
         grid.insert(CellRef::new(0, 1), Cell::new_script("A1"));
 
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_detect_cycle_indirect() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("B1"));
         grid.insert(CellRef::new(0, 1), Cell::new_script("C1"));
         grid.insert(CellRef::new(0, 2), Cell::new_script("A1"));
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_detect_cycle_self_reference() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("A1"));
 
         assert!(detect_cycle(&CellRef::new(0, 0), &grid).is_some());
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_range_functions_evaluation() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
         grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_typed_ref_len_over_script_string() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 2), Cell::new_number(150.0)); // C1
         grid.insert(
             CellRef::new(0, 1),
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_custom_functions() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let custom_script = r#"
             fn double(x) { x * 2.0 }
             fn square(x) { x * x }
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_custom_functions_with_syntax_error() {
-        let grid: Grid = DashMap::new();
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
         let bad_script = "fn broken( { }";
 
         let (_engine, _ast, error) = create_engine_with_functions(grid, Some(bad_script));

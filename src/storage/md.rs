@@ -153,8 +153,8 @@ mod tests {
     #[test]
     fn markdown_export_matches_expected_simple() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let grid_path = repo_root.join("test/simple.grid");
-        let expected_path = repo_root.join("test/simple.expected.md");
+        let grid_path = repo_root.join("tests/fixtures/simple.grid");
+        let expected_path = repo_root.join("tests/fixtures/simple.expected.md");
         let output_path = std::env::temp_dir().join(format!(
             "gridline_simple_export_{}_{}_{:?}.md",
             std::process::id(),

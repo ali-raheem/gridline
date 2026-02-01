@@ -167,6 +167,14 @@ impl App {
         Ok(app)
     }
 
+    /// Create a new application with an existing Core instance
+    pub fn new_with_core(core: Core, keymap: Keymap) -> Self {
+        let mut app = Self::new();
+        app.core = core;
+        app.keymap = keymap;
+        app
+    }
+
     /// Load custom Rhai functions from a file (appends to existing functions)
     pub fn load_functions(&mut self, path: &std::path::Path) {
         match self.core.load_functions(path) {

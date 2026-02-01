@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_write_number() {
-        let grid = Grid::new();
+        let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(42.0));
         let content = write_grd_content(&grid);
         assert!(content.contains("A1: 42"));
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_write_text() {
-        let grid = Grid::new();
+        let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_text("Hello"));
         let content = write_grd_content(&grid);
         assert!(content.contains("A1: \"Hello\""));
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_write_formula() {
-        let grid = Grid::new();
+        let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("B1 + C1"));
         let content = write_grd_content(&grid);
         assert!(content.contains("A1: =B1 + C1"));
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_skip_empty_cells() {
-        let grid = Grid::new();
+        let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_empty());
         grid.insert(CellRef::new(0, 1), Cell::new_number(42.0));
         let content = write_grd_content(&grid);
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_sorted_output() {
-        let grid = Grid::new();
+        let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(1, 1), Cell::new_number(3.0)); // B2
         grid.insert(CellRef::new(0, 0), Cell::new_number(1.0)); // A1
         grid.insert(CellRef::new(0, 1), Cell::new_number(2.0)); // B1
