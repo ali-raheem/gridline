@@ -11,12 +11,17 @@ Gridline is a proof-of-concept terminal spreadsheet with Rhai support. Cells can
 What you get (today):
 - TUI grid with a formula bar and command mode
 - A1-style references in formulas (`=A1 + B2`) and range functions (`=SUM(A1:B5)`)
-- Dependency tracking and recalculation
+- Dependency tracking and recalculation with undo/redo support
 - Load/reload user functions from a `.rhai` file (`-f` at startup, `:source` at runtime)
 - Vim keybindings by default, optional Emacs keymap
 - Custom keymaps via TOML (optional override)
 - Plain text storage format (one cell per line)
+- CSV import/export (`:import`, `:export`)
+- Markdown export with ASCII charts (`-o` flag or command mode)
+- Command-line evaluation mode (`-c` flag)
+- Row/column insertion and deletion
 - Simple plotting in a modal (bar/line/scatter)
+- Interactive help system (`:help`)
 
 Project status: this is a POC. Expect rough edges (especially around plotting and any non-trivial spreadsheet ergonomics).
 
@@ -64,6 +69,23 @@ Open an example file:
 ```bash
 cargo run -- examples/plot.grid
 ```
+
+### Command-line Evaluation
+
+Evaluate formulas without opening the TUI:
+
+```bash
+# Evaluate and print to stdout
+cargo run -- -c "SUM(0..100)"
+
+# Evaluate and export to markdown
+cargo run -- -c "VEC(1..20).map(|x| POW(x, 2))" -o squares.md
+
+# Export existing file to markdown
+cargo run -- examples/plot.grid -o plot.md
+```
+
+### Loading Functions
 
 Load custom Rhai functions at startup (can specify multiple files):
 
@@ -130,14 +152,18 @@ Built-in range functions (ALL CAPS):
 - `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`
 - `SUMIF(range, |x| condition)` - sum values where predicate is true
 - `COUNTIF(range, |x| condition)` - count cells where predicate is true
-- `BARCHART`, `LINECHART`, `SCATTER`
 - `VEC` (convert a range to an array; respects direction: `VEC(A3:A1)` returns `[A3, A2, A1]`)
+- `SPILL(arr)` or `SPILL(range)` - convert ranges/arrays to spillable arrays (also available as method: `arr.SPILL()`)
+- Chart functions: `BARCHART`, `LINECHART`, `SCATTER` (support optional title and axis labels)
 
 Other built-ins:
 - `ROW()` - current cell's row (1-indexed)
 - `COL()` - current cell's column (1-indexed)
 - `RAND()` - random float in `[0.0, 1.0)`
 - `RANDINT(min, max)` - random integer in `[min, max]` inclusive
+- `POW(base, exp)` - exponentiation (base^exp)
+- `SQRT(x)` - square root
+- `OUTPUT(value, fn)` - apply function to value and return result (useful for in-place operations like `sort()`)
 
 ### Custom Functions Example 🧩
 
@@ -178,16 +204,29 @@ Command mode:
 - Vim: `:`
 - Emacs: `M-x`
 
-Useful commands:
-- `:w` or `:w <path>` save
-- `:q` quit (warns if modified)
-- `:q!` force quit
-- `:wq` save and quit
-- `:e <path>` open file
-- `:goto A100` (alias `:g A100`) jump to a cell
-- `:colwidth 15` set current column width
-- `:colwidth A 15` set a specific column width
-- `:source <file.rhai>` (alias `:so`) load functions; `:so` reloads the last functions file
+### File Operations
+- `:w` or `:w <path>` (alias `:save`) - save
+- `:q` - quit (warns if modified)
+- `:q!` - force quit
+- `:wq` - save and quit
+- `:e <path>` (alias `:open`) - open file
+- `:import <file.csv>` - import CSV data at current cursor position
+- `:export <file.csv>` - export grid to CSV format
+
+### Navigation
+- `:goto A100` (alias `:g A100`) - jump to a cell
+
+### Grid Editing
+- `:ir` or `:insertrow` - insert row above current row
+- `:dr` or `:deleterow` - delete current row
+- `:ic` or `:insertcol` - insert column to the left of current column
+- `:dc` or `:deletecol` - delete current column
+- `:colwidth 15` (alias `:cw`) - set current column width
+- `:colwidth A 15` - set a specific column width
+
+### Functions and Help
+- `:source <file.rhai>` (alias `:so`) - load functions; `:so` with no args reloads all loaded files
+- `:help` or `:h` - open help modal
 
 ## Keymaps 🗺️
 
@@ -212,25 +251,86 @@ Sample keymap file:
 
 Status bar has an always-on cheat sheet, but the core controls are:
 
-Vim:
-- `hjkl` move, `i`/`Enter` edit, `Esc` cancel
-- `v` visual select, `y` yank, `p` paste
-- `:w` save, `:q` quit
+### Vim Mode (default)
+- `hjkl` - move cursor
+- `i` or `Enter` - edit cell
+- `Esc` - cancel edit
+- `v` - visual select (start range selection)
+- `y` - yank (copy)
+- `p` - paste
+- `u` - undo
+- `Ctrl+r` - redo
+- `>` or `+` - increase column width
+- `<` or `-` - decrease column width
+- `P` - open plot modal
+- `:w` - save
+- `:q` - quit
+- `:help` - open help modal
 
-Emacs:
-- `C-n/p/f/b` move, `Enter` edit, `C-g` cancel
-- `C-SPC` set mark (visual), `M-w` copy, `C-y` paste
-- `M-x` command mode, `:w` save, `:q` quit
+### Emacs Mode (experimental)
 
-## File Format 📝
+**Note:** Emacs mode is incomplete and must be enabled with `--keymap emacs`. Some documented keybindings may not work as expected.
 
-Gridline files are plain text. Non-empty, non-comment lines look like:
+- `C-n/p/f/b` - move cursor (next/previous/forward/back)
+- `Enter` - edit cell
+- `C-g` - cancel edit
+- `C-SPC` - set mark (start visual selection)
+- `M-w` - copy
+- `C-y` - paste
+- `M-p` - open plot modal
+- `M-x` - command mode
+
+Use `:w` and `:q` in command mode for save/quit operations.
+
+## File Formats 📁
+
+### Grid Files (.grid)
+
+Plain text format with one cell per line:
 
 ```text
 CELLREF: VALUE
 ```
 
 Comments start with `#`. Values follow the same input rules as interactive editing.
+
+### CSV Import/Export
+
+Import CSV data into your grid:
+
+```bash
+# In command mode
+:import data.csv
+```
+
+Export grid to CSV:
+
+```bash
+# In command mode
+:export output.csv
+```
+
+CSV features:
+- Preserves leading zeros in numeric strings
+- Handles quoted fields and escaped quotes
+- Imports at current cursor position
+
+### Markdown Export
+
+Export your grid as a markdown table with ASCII charts:
+
+```bash
+# Command-line export
+cargo run -- examples/plot.grid -o output.md
+
+# Or evaluate formula and export
+cargo run -- -c "VEC(1..10).map(|x| x * x)" -o squares.md
+```
+
+The markdown export includes:
+- Grid data as a markdown table
+- ASCII renderings of any charts
+- Row and column labels
 
 ## Development 🔧
 
