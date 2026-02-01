@@ -2,7 +2,7 @@ use directories::ProjectDirs;
 use std::path::PathBuf;
 
 pub(crate) fn default_functions_path() -> Option<PathBuf> {
-    let proj = ProjectDirs::from("", "", "gridline")?;
+    let proj = ProjectDirs::from("me", "shoryuken", "gridline")?;
     let mut path = proj.config_dir().to_path_buf();
     path.push("default.rhai");
     Some(path)
@@ -21,6 +21,8 @@ pub(crate) fn prepend_default_functions_if_present(
     };
     if path.is_file() {
         functions.insert(0, path);
+    }else{
+        eprintln!("Failed to load functions file from {}.", path.display());
     }
 }
 
