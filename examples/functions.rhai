@@ -32,7 +32,15 @@ fn clamp(x, min, max) { if x < min { min } else if x > max { max } else { x } }
 fn fib(n) { if n < 2 { n } else { fib(n-1) + fib(n-2) } }
 
 fn affine(v, mini, maxi, mino, maxo) {
-   ((v.to_float() - mini.to_float()) / (maxi.to_float() - mini.to_float()) ) * (maxo.to_float() - mino.to_float()) + mino.to_float()
+    let v = v.to_float();
+    let in_min = mini.to_float();
+    let in_max = maxi.to_float();
+    let out_min = mino.to_float();
+    let out_max = maxo.to_float();
+
+    let t = (v - in_min) / (in_max - in_min);
+
+    out_min + (t * (out_max - out_min))
 }
 
 // Financial functions
