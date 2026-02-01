@@ -1,29 +1,67 @@
+
+[workspace]
+members = [
+  "crates/gridline-engine",
+  "crates/gridline-core",
+]
+
 [package]
 name = "gridline"
-version = "0.1.6"
+version = "0.1.9"
 edition = "2024"
 authors = ["Ali Raheem"]
 repository = "https://github.com/ali-raheem/gridline"
 license = "MIT OR Apache-2.0"
 description = "Terminal spreadsheet with Rhai-powered formulas."
-
-[lib]
-name = "gridline_engine"
-path = "src/lib.rs"
+default-run = "gridline"
 
 [[bin]]
 name = "gridline"
 path = "src/main.rs"
 
+[[bin]]
+name = "gridline-gui"
+path = "src/bin/gridline-gui.rs"
+required-features = ["gui"]
+
+[[bin]]
+name = "gridline-webui"
+path = "src/bin/gridline-webui.rs"
+required-features = ["webui"]
+
+[features]
+default = ["tui"]
+
+# Terminal UI
+tui = [
+  "dep:ratatui",
+  "dep:crossterm",
+  "dep:textplots",
+  "dep:toml",
+  "dep:serde",
+  "dep:directories",
+]
+
+# Desktop GUI
+gui = ["dep:eframe"]
+
+# Placeholder for future web UI
+webui = []
+
 [dependencies]
-rhai = "1.24.0"
-regex = "1"
-dashmap = "6"
-serde = { version = "1.0", features = ["derive"] }
-ratatui = "0.29"
-crossterm = "0.28"
+gridline-core = { path = "crates/gridline-core" }
+gridline-engine = { path = "crates/gridline-engine" }
+
+# Shared (non-UI) deps for the CLI
 thiserror = "2.0"
-textplots = "0.8"
-rand = "0.8"
-toml = "0.8"
-directories = "6"
+
+# Optional TUI deps
+ratatui = { version = "0.29", optional = true }
+crossterm = { version = "0.28", optional = true }
+textplots = { version = "0.8", optional = true }
+toml = { version = "0.8", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+directories = { version = "6", optional = true }
+
+# Optional GUI deps
+eframe = { version = "0.30", default-features = false, features = ["glow", "x11"], optional = true }

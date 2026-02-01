@@ -178,7 +178,7 @@ fn escape_csv_field(field: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::Core;
+    use crate::document::Document;
 
     #[test]
     fn test_parse_csv_line_simple() {
@@ -230,9 +230,10 @@ mod tests {
 
     #[test]
     fn test_import_csv_invalidates_dependents() {
-        let mut core = Core::new();
+        let mut core = Document::new();
         core.set_cell_from_input(CellRef::new(0, 0), "1").unwrap(); // A1
-        core.set_cell_from_input(CellRef::new(0, 1), "=A1 + 1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(0, 1), "=A1 + 1")
+            .unwrap(); // B1
 
         let display_before = core.get_cell_display(&CellRef::new(0, 1));
         assert_eq!(display_before, "2");

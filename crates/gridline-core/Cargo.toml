@@ -1,0 +1,17 @@
+[package]
+name = "gridline-core"
+version = "0.1.9"
+edition = "2024"
+authors = ["Ali Raheem"]
+license = "MIT OR Apache-2.0"
+description = "Gridline UI-agnostic document model and storage."
+
+[lib]
+name = "gridline_core"
+path = "src/lib.rs"
+
+[dependencies]
+gridline-engine = { path = "../gridline-engine" }
+dashmap = "6"
+rhai = "1.24.0"
+thiserror = "2.0"

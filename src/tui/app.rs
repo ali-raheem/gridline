@@ -5,10 +5,9 @@
 //! The app operates in different [`Mode`]s (Normal, Edit, Command, Visual) similar
 //! to Vim's modal editing.
 
-use crate::core::Core;
-use crate::error::Result;
+use gridline_core::{Document, Result};
 use gridline_engine::engine::{Cell, CellRef};
-use gridline_engine::plot::{PlotSpec, parse_plot_spec};
+use gridline_engine::plot::{parse_plot_spec, PlotSpec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -57,7 +56,7 @@ pub enum Mode {
 /// - Modal UI state (plot, help)
 pub struct App {
     /// Core spreadsheet state (UI-agnostic)
-    pub core: Core,
+    pub core: Document,
     /// Current cursor position (column)
     pub cursor_col: usize,
     /// Current cursor position (row)
@@ -108,7 +107,7 @@ pub struct App {
 impl App {
     /// Create a new application
     pub fn new() -> Self {
-        let core = Core::new();
+        let core = Document::new();
 
         App {
             core,
@@ -163,12 +162,12 @@ impl App {
     ) -> Result<Self> {
         let mut app = Self::new();
         app.keymap = keymap;
-        app.core = Core::with_file(path, functions_files)?;
+        app.core = Document::with_file(path, functions_files)?;
         Ok(app)
     }
 
-    /// Create a new application with an existing Core instance
-    pub fn new_with_core(core: Core, keymap: Keymap) -> Self {
+    /// Create a new application with an existing Document instance
+    pub fn new_with_core(core: Document, keymap: Keymap) -> Self {
         let mut app = Self::new();
         app.core = core;
         app.keymap = keymap;
@@ -575,8 +574,7 @@ impl App {
                             }
                         }
                         _ => {
-                            self.status_message =
-                                "Usage: :colwidth [COL] WIDTH".to_string();
+                            self.status_message = "Usage: :colwidth [COL] WIDTH".to_string();
                         }
                     }
                 } else {

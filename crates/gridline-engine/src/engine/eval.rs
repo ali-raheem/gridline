@@ -6,7 +6,7 @@
 
 use rhai::Engine;
 
-use super::{AST, Dynamic, Grid, ValueCache};
+use super::{Dynamic, Grid, ValueCache, AST};
 
 /// Create a Rhai engine with built-ins registered.
 pub fn create_engine(grid: Grid) -> Engine {

@@ -1,10 +1,10 @@
-use super::Core;
+use super::Document;
 use crate::error::{GridlineError, Result};
 use crate::storage::{parse_csv, parse_grd, write_csv, write_grd};
 use gridline_engine::engine::CellType;
 use std::path::{Path, PathBuf};
 
-impl Core {
+impl Document {
     /// Load custom Rhai functions from a file (appends to existing functions).
     /// Returns the path loaded, or an error.
     pub fn load_functions(&mut self, path: &Path) -> Result<PathBuf> {
@@ -137,10 +137,8 @@ impl Core {
                 if field.is_empty() {
                     continue;
                 }
-                let cell_ref = gridline_engine::engine::CellRef::new(
-                    start_row + row_idx,
-                    start_col + col_idx,
-                );
+                let cell_ref =
+                    gridline_engine::engine::CellRef::new(start_row + row_idx, start_col + col_idx);
                 let cell = crate::storage::csv::parse_csv_field(&field);
                 self.grid.insert(cell_ref, cell);
                 count += 1;

@@ -1,15 +1,15 @@
 //! Markdown export functionality
 
-use crate::tui::App;
+use crate::document::Document;
 use gridline_engine::engine::CellRef;
 use gridline_engine::plot::{parse_plot_spec, PlotData, PlotKind, PlotSpec, PLOT_PREFIX};
 use std::io::Write;
 use std::path::Path;
 
 /// Write the grid to a markdown file
-pub fn write_markdown(path: &Path, app: &mut App) -> std::io::Result<()> {
-    // Find grid bounds (from populated cells + spill_map)
-    let (min_row, min_col, max_row, max_col) = find_grid_bounds(app);
+pub fn write_markdown(path: &Path, doc: &mut Document) -> std::io::Result<()> {
+    // Find grid bounds (from populated cells + spilled values)
+    let (min_row, min_col, max_row, max_col) = find_grid_bounds(doc);
 
     if min_row > max_row {
         // Empty grid
@@ -47,7 +47,7 @@ pub fn write_markdown(path: &Path, app: &mut App) -> std::io::Result<()> {
 
         for col in min_col..=max_col {
             let cell_ref = CellRef::new(row, col);
-            let display = app.core.get_cell_display(&cell_ref);
+            let display = doc.get_cell_display(&cell_ref);
 
             // Check if this is a plot cell
             if display.starts_with(PLOT_PREFIX) {
@@ -71,7 +71,7 @@ pub fn write_markdown(path: &Path, app: &mut App) -> std::io::Result<()> {
         writeln!(file, "## {}", title)?;
         writeln!(file)?;
         writeln!(file, "```")?;
-        render_plot_ascii(&mut file, &spec, app)?;
+        render_plot_ascii(&mut file, &spec, doc)?;
         writeln!(file, "```")?;
     }
 
@@ -79,14 +79,14 @@ pub fn write_markdown(path: &Path, app: &mut App) -> std::io::Result<()> {
 }
 
 /// Find the bounds of the grid (min/max row/col)
-fn find_grid_bounds(app: &App) -> (usize, usize, usize, usize) {
+fn find_grid_bounds(doc: &Document) -> (usize, usize, usize, usize) {
     let mut min_row = usize::MAX;
     let mut min_col = usize::MAX;
     let mut max_row = 0usize;
     let mut max_col = 0usize;
 
     // Check grid cells
-    for entry in app.core.grid.iter() {
+    for entry in doc.grid.iter() {
         let cell_ref = entry.key();
         min_row = min_row.min(cell_ref.row);
         min_col = min_col.min(cell_ref.col);
@@ -95,7 +95,7 @@ fn find_grid_bounds(app: &App) -> (usize, usize, usize, usize) {
     }
 
     // Check value_cache for additional cells (e.g., array spills)
-    for entry in app.core.value_cache.iter() {
+    for entry in doc.value_cache.iter() {
         let cell_ref = entry.key();
         min_row = min_row.min(cell_ref.row);
         min_col = min_col.min(cell_ref.col);
@@ -108,17 +108,19 @@ fn find_grid_bounds(app: &App) -> (usize, usize, usize, usize) {
 
 /// Escape special markdown characters in cell content
 fn escape_markdown(s: &str) -> String {
-    s.replace('|', "\\|")
-        .replace('\n', " ")
-        .replace('\r', "")
+    s.replace('|', "\\|").replace('\n', " ").replace('\r', "")
 }
 
 /// Render a plot as ASCII art
-fn render_plot_ascii<W: Write>(w: &mut W, spec: &PlotSpec, app: &mut App) -> std::io::Result<()> {
+fn render_plot_ascii<W: Write>(
+    w: &mut W,
+    spec: &PlotSpec,
+    doc: &mut Document,
+) -> std::io::Result<()> {
     // Create cell value accessor
     let cell_value = |row: usize, col: usize| -> Option<f64> {
         let cell_ref = CellRef::new(row, col);
-        let display = app.core.get_cell_display(&cell_ref);
+        let display = doc.get_cell_display(&cell_ref);
         display.parse::<f64>().ok()
     };
 
@@ -146,7 +148,7 @@ fn render_plot_ascii<W: Write>(w: &mut W, spec: &PlotSpec, app: &mut App) -> std
 #[cfg(test)]
 mod tests {
     use super::write_markdown;
-    use crate::tui::App;
+    use crate::document::Document;
     use std::fs;
     use std::path::PathBuf;
 
@@ -172,11 +174,8 @@ mod tests {
         }
         let _cleanup = Cleanup(output_path.clone());
 
-        let (keymap, _warnings) = crate::tui::load_keymap(None, None);
-        let mut app =
-            App::with_file(Some(grid_path.to_path_buf()), Vec::new(), keymap).unwrap();
-
-        write_markdown(&output_path, &mut app).unwrap();
+        let mut doc = Document::with_file(Some(grid_path.to_path_buf()), Vec::new()).unwrap();
+        write_markdown(&output_path, &mut doc).unwrap();
 
         let actual = fs::read_to_string(&output_path).unwrap();
         let expected = fs::read_to_string(expected_path).unwrap();
@@ -334,7 +333,12 @@ fn render_scatter_chart<W: Write>(w: &mut W, data: &PlotData) -> std::io::Result
     writeln!(w)?;
 
     // X-axis labels
-    writeln!(w, "        {:<20}{:>20}", format!("{:.1}", x_min), format!("{:.1}", x_max))?;
+    writeln!(
+        w,
+        "        {:<20}{:>20}",
+        format!("{:.1}", x_min),
+        format!("{:.1}", x_max)
+    )?;
 
     Ok(())
 }

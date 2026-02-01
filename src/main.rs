@@ -1,13 +1,11 @@
-//! Gridline - A spreadsheet application with TUI
+//! Gridline - CLI + optional frontends.
 
-mod error;
-mod core;
-mod storage;
-mod tui;
-
+use gridline_core::{CellRef, Document};
 use std::env;
 use std::path::PathBuf;
-use gridline_engine::engine::CellRef;
+
+#[cfg(feature = "tui")]
+mod tui;
 
 /// Run command mode: evaluate a formula and print the result
 fn run_command_mode(
@@ -15,14 +13,12 @@ fn run_command_mode(
     functions_files: Vec<PathBuf>,
     output_file: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use gridline_engine::engine::{Cell, CellRef};
-
-    // Create minimal core instance
-    let mut core = core::Core::new();
+    // Create minimal document instance
+    let mut doc = Document::new();
 
     // Load custom functions
     for func_path in &functions_files {
-        if let Err(e) = core.load_functions(func_path) {
+        if let Err(e) = doc.load_functions(func_path) {
             eprintln!("Warning: failed to load functions from {:?}: {}", func_path, e);
         }
     }
@@ -35,12 +31,10 @@ fn run_command_mode(
     };
 
     let cell_ref = CellRef::new(0, 0);
-    let cell = Cell::from_input(&formula_with_eq);
-    core.grid.insert(cell_ref.clone(), cell);
-    core.rebuild_dependents();
+    doc.set_cell_from_input(cell_ref.clone(), &formula_with_eq)?;
 
     // Evaluate and get result
-    let result = core.get_cell_display(&cell_ref);
+    let result = doc.get_cell_display(&cell_ref);
 
     // Check for errors (for exit code)
     let is_error = result.starts_with("#ERR")
@@ -52,11 +46,11 @@ fn run_command_mode(
     // Output handling
     if let Some(output_path) = output_file {
         // Write to markdown (handles arrays as spilled grid)
-        write_command_result_markdown(&output_path, core)?;
+        gridline_core::storage::write_markdown(&output_path, &mut doc)?;
         eprintln!("Result written to {}", output_path.display());
     } else {
         // Print to stdout
-        print_command_result(&result, &cell_ref, &core);
+        print_command_result(&result, &cell_ref, &mut doc);
     }
 
     // Exit with appropriate code
@@ -68,11 +62,9 @@ fn run_command_mode(
 }
 
 /// Print command result to stdout, handling array/spill results
-fn print_command_result(result: &str, cell_ref: &CellRef, core: &core::Core) {
-    use gridline_engine::engine::format_dynamic;
-
+fn print_command_result(result: &str, cell_ref: &CellRef, doc: &mut Document) {
     // Check if this is a spill source (array result)
-    let has_spill = core.spill_sources.values().any(|src| src == cell_ref);
+    let has_spill = doc.spill_sources.values().any(|src| src == cell_ref);
 
     if has_spill {
         // Print array elements one per line
@@ -83,11 +75,9 @@ fn print_command_result(result: &str, cell_ref: &CellRef, core: &core::Core) {
         let mut row = cell_ref.row + 1;
         loop {
             let spill_ref = CellRef::new(row, cell_ref.col);
-            if let Some(src) = core.spill_sources.get(&spill_ref) {
+            if let Some(src) = doc.spill_sources.get(&spill_ref) {
                 if src == cell_ref {
-                    if let Some(val) = core.value_cache.get(&spill_ref) {
-                        println!("{}", format_dynamic(&val));
-                    }
+                    println!("{}", doc.get_cell_display(&spill_ref));
                     row += 1;
                 } else {
                     break;
@@ -100,18 +90,6 @@ fn print_command_result(result: &str, cell_ref: &CellRef, core: &core::Core) {
         // Simple scalar result
         println!("{}", result);
     }
-}
-
-/// Write command result to markdown file
-fn write_command_result_markdown(
-    path: &PathBuf,
-    core: core::Core,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Use existing markdown writer through App wrapper
-    let (keymap, _) = tui::load_keymap(None, None);
-    let mut app = tui::App::new_with_core(core, keymap);
-    storage::write_markdown(path, &mut app)?;
-    Ok(())
 }
 
 fn print_usage() {
@@ -213,29 +191,52 @@ fn main() {
         return;
     }
 
-    let (keymap, warnings) = tui::load_keymap(keymap_name.as_deref(), keymap_file.as_ref());
-    for warning in warnings {
-        eprintln!("Warning: {}", warning);
-    }
-
-    let mut app = match tui::App::with_file(file_path, functions_files, keymap) {
-        Ok(app) => app,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-    };
-
+    // Non-interactive markdown export from a file.
     if let Some(output_path) = output_file {
-        if let Err(e) = storage::write_markdown(&output_path, &mut app) {
+        let mut doc = match Document::with_file(file_path, functions_files) {
+            Ok(doc) => doc,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        if let Err(e) = gridline_core::storage::write_markdown(&output_path, &mut doc) {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
         println!("Exported to {}", output_path.display());
-    } else {
+        return;
+    }
+
+    // Interactive mode.
+    #[cfg(feature = "tui")]
+    {
+        let (keymap, warnings) = tui::load_keymap(keymap_name.as_deref(), keymap_file.as_ref());
+        for warning in warnings {
+            eprintln!("Warning: {}", warning);
+        }
+
+        let mut app = match tui::App::with_file(file_path, functions_files, keymap) {
+            Ok(app) => app,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        };
+
         if let Err(e) = tui::run(&mut app) {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
+        return;
+    }
+
+    #[cfg(not(feature = "tui"))]
+    {
+        let _ = (keymap_name, keymap_file);
+        eprintln!("Error: interactive mode requires the 'tui' feature");
+        eprintln!("Hint: cargo run --features tui");
+        std::process::exit(1);
     }
 }

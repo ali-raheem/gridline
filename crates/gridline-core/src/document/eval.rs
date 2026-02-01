@@ -1,11 +1,11 @@
-use super::Core;
+use super::Document;
 use gridline_engine::engine::{
     CellRef, CellType, detect_cycle, eval_with_functions_script, format_dynamic, format_number,
     preprocess_script_with_context,
 };
 use rhai::Dynamic;
 
-impl Core {
+impl Document {
     /// Get the display value for a cell
     pub fn get_cell_display(&mut self, cell_ref: &CellRef) -> String {
         // Check if this is a spill cell (value is in shared value_cache)
