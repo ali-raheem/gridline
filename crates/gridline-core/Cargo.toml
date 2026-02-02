@@ -11,7 +11,8 @@ name = "gridline_core"
 path = "src/lib.rs"
 
 [dependencies]
-gridline-engine = { path = "../gridline-engine" }
+gridline-engine = { path = "../gridline-engine", version = "0.2.0" }
+
 dashmap = "6"
 rhai = "1.24.0"
 thiserror = "2.0"

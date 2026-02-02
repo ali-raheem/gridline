@@ -48,8 +48,9 @@ gui = ["dep:eframe", "dep:arboard"]
 webui = []
 
 [dependencies]
-gridline-core = { path = "crates/gridline-core" }
-gridline-engine = { path = "crates/gridline-engine" }
+gridline-core = { path = "crates/gridline-core", version = "0.2.0" }
+gridline-engine = { path = "crates/gridline-engine", version = "0.2.0" }
+
 
 # Used by CLI/GUI for locating config dir (default.rhai).
 directories = "6"
