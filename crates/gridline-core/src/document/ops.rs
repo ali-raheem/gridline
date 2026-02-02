@@ -309,7 +309,7 @@ impl Document {
         self.redo_stack.push(UndoAction {
             cell_ref: action.cell_ref.clone(),
             old_cell: current,
-            new_cell: action.old_cell.clone(),
+            new_cell: action.new_cell.clone(),
         });
 
         let cell_ref = action.cell_ref.clone();
