@@ -162,7 +162,7 @@ impl Document {
         path: &str,
         range: Option<((usize, usize), (usize, usize))>,
     ) -> Result<()> {
-        write_csv(Path::new(path), &self.grid, range)?;
+        write_csv(Path::new(path), self, range)?;
         Ok(())
     }
 }

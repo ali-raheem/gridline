@@ -1,7 +1,8 @@
 //! CSV import/export functionality
 
+use crate::document::Document;
 use crate::error::Result;
-use gridline_engine::engine::{Cell, CellRef, Grid};
+use gridline_engine::engine::{Cell, CellRef};
 use std::io::Write;
 use std::path::Path;
 
@@ -92,22 +93,30 @@ pub(crate) fn parse_csv_field(field: &str) -> Cell {
     Cell::new_text(trimmed)
 }
 
-/// Export grid data to CSV format
+/// Export grid data to CSV format using evaluated display values.
 pub fn write_csv(
     path: &Path,
-    grid: &Grid,
+    doc: &mut Document,
     range: Option<((usize, usize), (usize, usize))>,
 ) -> Result<()> {
     let (min_row, min_col, max_row, max_col) = if let Some(((c1, r1), (c2, r2))) = range {
         (r1, c1, r2, c2)
     } else {
-        // Auto-detect bounds from data
+        // Auto-detect bounds from data and cached spill values.
         let mut min_row = usize::MAX;
         let mut min_col = usize::MAX;
         let mut max_row = 0usize;
         let mut max_col = 0usize;
 
-        for entry in grid.iter() {
+        for entry in doc.grid.iter() {
+            let cell_ref = entry.key();
+            min_row = min_row.min(cell_ref.row);
+            min_col = min_col.min(cell_ref.col);
+            max_row = max_row.max(cell_ref.row);
+            max_col = max_col.max(cell_ref.col);
+        }
+
+        for entry in doc.value_cache.iter() {
             let cell_ref = entry.key();
             min_row = min_row.min(cell_ref.row);
             min_col = min_col.min(cell_ref.col);
@@ -129,41 +138,13 @@ pub fn write_csv(
         let mut row_fields = Vec::new();
         for col in min_col..=max_col {
             let cell_ref = CellRef::new(col, row);
-            let value = if let Some(cell) = grid.get(&cell_ref) {
-                cell_display_value(&cell)
-            } else {
-                String::new()
-            };
+            let value = doc.get_cell_display(&cell_ref);
             row_fields.push(escape_csv_field(&value));
         }
         writeln!(file, "{}", row_fields.join(","))?;
     }
 
     Ok(())
-}
-
-/// Get the display value of a cell for CSV export
-fn cell_display_value(cell: &Cell) -> String {
-    use gridline_engine::engine::CellType;
-    match &cell.contents {
-        CellType::Empty => String::new(),
-        CellType::Text(s) => s.clone(),
-        CellType::Number(n) => {
-            if n.fract() == 0.0 && n.abs() < 1e15 {
-                format!("{}", *n as i64)
-            } else {
-                n.to_string()
-            }
-        }
-        CellType::Script(s) => {
-            // For scripts, export the cached value if available, otherwise the formula
-            if let Some(ref cached) = cell.cached_value {
-                cached.clone()
-            } else {
-                format!("={}", s)
-            }
-        }
-    }
 }
 
 /// Escape a field for CSV output
@@ -244,5 +225,101 @@ mod tests {
         let display_after = core.get_cell_display(&CellRef::new(1, 0));
 
         assert_eq!(display_after, "6");
+    }
+
+    #[test]
+    fn test_export_csv_uses_evaluated_values() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "=1+2")
+            .unwrap();
+        core.set_cell_from_input(CellRef::new(1, 0), "text")
+            .unwrap();
+
+        let output_path = std::env::temp_dir().join(format!(
+            "gridline_export_eval_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(output_path.clone());
+
+        write_csv(&output_path, &mut core, None).unwrap();
+        let contents = std::fs::read_to_string(output_path).unwrap();
+        assert_eq!(contents.trim_end(), "3,text");
+    }
+
+    #[test]
+    fn test_export_csv_includes_spill_values() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "=SPILL(0..=9)")
+            .unwrap();
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+
+        let output_path = std::env::temp_dir().join(format!(
+            "gridline_export_spill_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(output_path.clone());
+
+        write_csv(&output_path, &mut core, None).unwrap();
+        let contents = std::fs::read_to_string(output_path).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
+        assert_eq!(lines.len(), 10);
+        assert_eq!(lines.first().copied(), Some("0"));
+        assert_eq!(lines.last().copied(), Some("9"));
+    }
+
+    #[test]
+    fn test_export_csv_range_limits_spill_values() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "=SPILL(0..=9)")
+            .unwrap();
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+
+        let output_path = std::env::temp_dir().join(format!(
+            "gridline_export_spill_range_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(output_path.clone());
+
+        let range = Some(((0, 2), (0, 4)));
+        write_csv(&output_path, &mut core, range).unwrap();
+        let contents = std::fs::read_to_string(output_path).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
+        assert_eq!(lines, vec!["2", "3", "4"]);
     }
 }
