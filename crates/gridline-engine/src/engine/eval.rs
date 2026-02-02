@@ -7,6 +7,7 @@
 use rhai::Engine;
 
 use super::{Dynamic, Grid, ValueCache, AST};
+use crate::builtins::ScriptModifications;
 
 /// Create a Rhai engine with built-ins registered.
 pub fn create_engine(grid: Grid) -> Engine {
@@ -90,6 +91,42 @@ pub fn eval_with_functions_script(
     } else {
         engine.eval(formula).map_err(|e| e.to_string())
     }
+}
+
+/// Create a Rhai engine for script execution with write builtins.
+/// This engine includes all read builtins plus write operations (set_cell, clear_cell, etc.).
+/// Used for :call and :rhai commands, NOT for cell formula evaluation.
+pub fn create_script_engine(
+    grid: Grid,
+    value_cache: ValueCache,
+    modifications: ScriptModifications,
+) -> Engine {
+    let mut engine = Engine::new();
+    crate::builtins::register_builtins(&mut engine, grid.clone(), value_cache);
+    crate::builtins::register_script_builtins(&mut engine, grid, modifications);
+    engine
+}
+
+/// Create a script engine with custom functions.
+/// Returns the engine, compiled AST (if any), and any error message.
+pub fn create_script_engine_with_functions(
+    grid: Grid,
+    value_cache: ValueCache,
+    modifications: ScriptModifications,
+    custom_script: Option<&str>,
+) -> (Engine, Option<AST>, Option<String>) {
+    let engine = create_script_engine(grid, value_cache, modifications);
+
+    let (ast, error) = if let Some(script) = custom_script {
+        match engine.compile(script) {
+            Ok(ast) => (Some(ast), None),
+            Err(e) => (None, Some(format!("Error in custom functions: {}", e))),
+        }
+    } else {
+        (None, None)
+    };
+
+    (engine, ast, error)
 }
 
 // Backward compatibility aliases (deprecated)

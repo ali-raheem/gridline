@@ -6,12 +6,13 @@
 //! - If you add a new built-in range function, update `RANGE_BUILTINS` and
 //!   register its implementation in `register_builtins`.
 
-use crate::engine::{CellRef, CellType, Grid, ValueCache, preprocess_script};
+use crate::engine::{Cell, CellRef, CellType, Grid, ValueCache, preprocess_script};
 use crate::plot::{PlotKind, PlotSpec, format_plot_spec};
 use rand::Rng;
 use regex::Regex;
 use rhai::{Dynamic, Engine, FnPtr, NativeCallContext};
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub struct RangeBuiltin {
     pub sheet_name: &'static str,
@@ -647,6 +648,174 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     );
 }
 
+/// Tracks cell modifications made by script builtins.
+/// Maps CellRef -> (old_cell, new_cell) to support undo.
+pub type ScriptModifications = Arc<Mutex<HashMap<CellRef, (Option<Cell>, Option<Cell>)>>>;
+
+/// Register script-only write builtins for script execution.
+/// These are NOT available in cell formulas, only when running scripts via :call or :rhai.
+pub fn register_script_builtins(
+    engine: &mut Engine,
+    grid: Grid,
+    modifications: ScriptModifications,
+) {
+    // SET_CELL(row, col, value) - Set cell by row/col indices
+    let grid_set = grid.clone();
+    let mods_set = modifications.clone();
+    engine.register_fn(
+        "SET_CELL",
+        move |row: i64, col: i64, value: Dynamic| {
+            let cell_ref = CellRef::new(row as usize, col as usize);
+            let old_cell = grid_set.get(&cell_ref).map(|r| r.clone());
+
+            let new_cell = dynamic_to_cell(value);
+            grid_set.insert(cell_ref.clone(), new_cell.clone());
+
+            let mut mods = mods_set.lock().unwrap();
+            // Only record first old_cell for each position (preserves original state for undo)
+            mods.entry(cell_ref)
+                .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
+                .or_insert((old_cell, Some(new_cell)));
+        },
+    );
+
+    // SET_CELL("A1", value) - Set cell by A1 notation
+    let grid_set_a1 = grid.clone();
+    let mods_set_a1 = modifications.clone();
+    engine.register_fn(
+        "SET_CELL",
+        move |cell_str: &str, value: Dynamic| {
+            let Some(cell_ref) = CellRef::from_str(cell_str) else {
+                return; // Invalid cell reference - silently ignore
+            };
+            let old_cell = grid_set_a1.get(&cell_ref).map(|r| r.clone());
+
+            let new_cell = dynamic_to_cell(value);
+            grid_set_a1.insert(cell_ref.clone(), new_cell.clone());
+
+            let mut mods = mods_set_a1.lock().unwrap();
+            mods.entry(cell_ref)
+                .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
+                .or_insert((old_cell, Some(new_cell)));
+        },
+    );
+
+    // CLEAR_CELL(row, col) - Clear cell by row/col indices
+    let grid_clear = grid.clone();
+    let mods_clear = modifications.clone();
+    engine.register_fn(
+        "CLEAR_CELL",
+        move |row: i64, col: i64| {
+            let cell_ref = CellRef::new(row as usize, col as usize);
+            let old_cell = grid_clear.get(&cell_ref).map(|r| r.clone());
+            grid_clear.remove(&cell_ref);
+
+            let mut mods = mods_clear.lock().unwrap();
+            mods.entry(cell_ref)
+                .and_modify(|(_, nc)| *nc = None)
+                .or_insert((old_cell, None));
+        },
+    );
+
+    // CLEAR_CELL("A1") - Clear cell by A1 notation
+    let grid_clear_a1 = grid.clone();
+    let mods_clear_a1 = modifications.clone();
+    engine.register_fn(
+        "CLEAR_CELL",
+        move |cell_str: &str| {
+            let Some(cell_ref) = CellRef::from_str(cell_str) else {
+                return;
+            };
+            let old_cell = grid_clear_a1.get(&cell_ref).map(|r| r.clone());
+            grid_clear_a1.remove(&cell_ref);
+
+            let mut mods = mods_clear_a1.lock().unwrap();
+            mods.entry(cell_ref)
+                .and_modify(|(_, nc)| *nc = None)
+                .or_insert((old_cell, None));
+        },
+    );
+
+    // SET_RANGE(r1, c1, r2, c2, value) - Fill range with value
+    let grid_SET_RANGE = grid.clone();
+    let mods_SET_RANGE = modifications.clone();
+    engine.register_fn(
+        "SET_RANGE",
+        move |r1: i64, c1: i64, r2: i64, c2: i64, value: Dynamic| {
+            let min_row = r1.min(r2) as usize;
+            let max_row = r1.max(r2) as usize;
+            let min_col = c1.min(c2) as usize;
+            let max_col = c1.max(c2) as usize;
+
+            let new_cell = dynamic_to_cell(value);
+
+            let mut mods = mods_SET_RANGE.lock().unwrap();
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    let cell_ref = CellRef::new(row, col);
+                    let old_cell = grid_SET_RANGE.get(&cell_ref).map(|r| r.clone());
+                    grid_SET_RANGE.insert(cell_ref.clone(), new_cell.clone());
+
+                    mods.entry(cell_ref)
+                        .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
+                        .or_insert((old_cell, Some(new_cell.clone())));
+                }
+            }
+        },
+    );
+
+    // CLEAR_RANGE(r1, c1, r2, c2) - Clear a range of cells
+    let grid_CLEAR_RANGE = grid.clone();
+    let mods_CLEAR_RANGE = modifications.clone();
+    engine.register_fn(
+        "CLEAR_RANGE",
+        move |r1: i64, c1: i64, r2: i64, c2: i64| {
+            let min_row = r1.min(r2) as usize;
+            let max_row = r1.max(r2) as usize;
+            let min_col = c1.min(c2) as usize;
+            let max_col = c1.max(c2) as usize;
+
+            let mut mods = mods_CLEAR_RANGE.lock().unwrap();
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    let cell_ref = CellRef::new(row, col);
+                    let old_cell = grid_CLEAR_RANGE.get(&cell_ref).map(|r| r.clone());
+                    grid_CLEAR_RANGE.remove(&cell_ref);
+
+                    mods.entry(cell_ref)
+                        .and_modify(|(_, nc)| *nc = None)
+                        .or_insert((old_cell, None));
+                }
+            }
+        },
+    );
+}
+
+/// Convert a Rhai Dynamic value to a Cell.
+fn dynamic_to_cell(value: Dynamic) -> Cell {
+    if value.is_unit() {
+        return Cell::new_empty();
+    }
+    if let Ok(s) = value.clone().into_string() {
+        // Check if it's a formula
+        if s.starts_with('=') {
+            return Cell::new_script(&s[1..]);
+        }
+        return Cell::new_text(&s);
+    }
+    if let Ok(n) = value.as_float() {
+        return Cell::new_number(n);
+    }
+    if let Ok(n) = value.as_int() {
+        return Cell::new_number(n as f64);
+    }
+    if let Ok(b) = value.as_bool() {
+        return Cell::new_text(if b { "TRUE" } else { "FALSE" });
+    }
+    // Fallback: convert to string
+    Cell::new_text(&value.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -939,5 +1108,123 @@ mod tests {
         // Count values >= 10: 10, 20, 30 = 3
         let result: i64 = engine.eval("countif_range(0, 0, 3, 0, |x| x >= 10)").unwrap();
         assert_eq!(result, 3);
+    }
+
+    #[test]
+    fn test_script_builtins_SET_CELL() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let value_cache = ValueCache::default();
+        let modifications: ScriptModifications =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid.clone(), value_cache);
+        register_script_builtins(&mut engine, grid.clone(), modifications.clone());
+
+        // Set a cell using row/col
+        let _: () = engine.eval("SET_CELL(0, 0, 42)").unwrap();
+        let cell = grid.get(&CellRef::new(0, 0)).unwrap();
+        assert!(matches!(cell.contents, CellType::Number(n) if (n - 42.0).abs() < 0.001));
+
+        // Set a cell using A1 notation
+        let _: () = engine.eval(r#"SET_CELL("B2", "hello")"#).unwrap();
+        let cell = grid.get(&CellRef::new(1, 1)).unwrap();
+        assert!(matches!(&cell.contents, CellType::Text(s) if s == "hello"));
+
+        // Check modifications were tracked
+        let mods = modifications.lock().unwrap();
+        assert_eq!(mods.len(), 2);
+    }
+
+    #[test]
+    fn test_script_builtins_CLEAR_CELL() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
+        grid.insert(CellRef::new(1, 1), Cell::new_text("hello"));
+
+        let value_cache = ValueCache::default();
+        let modifications: ScriptModifications =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid.clone(), value_cache);
+        register_script_builtins(&mut engine, grid.clone(), modifications.clone());
+
+        // Clear by row/col
+        let _: () = engine.eval("CLEAR_CELL(0, 0)").unwrap();
+        assert!(grid.get(&CellRef::new(0, 0)).is_none());
+
+        // Clear by A1 notation
+        let _: () = engine.eval(r#"CLEAR_CELL("B2")"#).unwrap();
+        assert!(grid.get(&CellRef::new(1, 1)).is_none());
+    }
+
+    #[test]
+    fn test_script_builtins_SET_RANGE() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let value_cache = ValueCache::default();
+        let modifications: ScriptModifications =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid.clone(), value_cache);
+        register_script_builtins(&mut engine, grid.clone(), modifications.clone());
+
+        // Fill a 3x2 range with value 99
+        let _: () = engine.eval("SET_RANGE(0, 0, 2, 1, 99)").unwrap();
+
+        // Verify all 6 cells were set
+        for row in 0..=2 {
+            for col in 0..=1 {
+                let cell = grid.get(&CellRef::new(row, col)).unwrap();
+                assert!(matches!(cell.contents, CellType::Number(n) if (n - 99.0).abs() < 0.001));
+            }
+        }
+    }
+
+    #[test]
+    fn test_script_builtins_CLEAR_RANGE() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        // Fill a 2x2 grid
+        for row in 0..=1 {
+            for col in 0..=1 {
+                grid.insert(CellRef::new(row, col), Cell::new_number(row as f64 + col as f64));
+            }
+        }
+
+        let value_cache = ValueCache::default();
+        let modifications: ScriptModifications =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid.clone(), value_cache);
+        register_script_builtins(&mut engine, grid.clone(), modifications.clone());
+
+        // Clear the range
+        let _: () = engine.eval("CLEAR_RANGE(0, 0, 1, 1)").unwrap();
+
+        // Verify all cells were cleared
+        for row in 0..=1 {
+            for col in 0..=1 {
+                assert!(grid.get(&CellRef::new(row, col)).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn test_script_builtins_SET_CELL_formula() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let value_cache = ValueCache::default();
+        let modifications: ScriptModifications =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid.clone(), value_cache);
+        register_script_builtins(&mut engine, grid.clone(), modifications);
+
+        // Set a formula cell
+        let _: () = engine.eval(r#"SET_CELL(0, 0, "=A2+B2")"#).unwrap();
+        let cell = grid.get(&CellRef::new(0, 0)).unwrap();
+        assert!(matches!(&cell.contents, CellType::Script(s) if s == "A2+B2"));
     }
 }

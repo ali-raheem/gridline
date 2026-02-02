@@ -1,4 +1,4 @@
-use super::{Document, UndoAction};
+use super::{Document, UndoAction, UndoEntry};
 use crate::error::{GridlineError, Result};
 use gridline_engine::engine::{shift_formula_references, Cell, CellRef, CellType, ShiftOperation};
 
@@ -64,11 +64,23 @@ impl Document {
     /// Push an undo action before modifying a cell
     fn push_undo(&mut self, cell_ref: CellRef, new_cell: Option<Cell>) {
         let old_cell = self.grid.get(&cell_ref).map(|r| r.clone());
-        self.undo_stack.push(UndoAction {
+        self.undo_stack.push(UndoEntry::Single(UndoAction {
             cell_ref,
             old_cell,
             new_cell,
-        });
+        }));
+        self.redo_stack.clear();
+        if self.undo_stack.len() > super::state::MAX_UNDO_STACK {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    /// Push a batch of undo actions (e.g., from script execution)
+    pub fn push_undo_batch(&mut self, actions: Vec<UndoAction>) {
+        if actions.is_empty() {
+            return;
+        }
+        self.undo_stack.push(UndoEntry::Batch(actions));
         self.redo_stack.clear();
         if self.undo_stack.len() > super::state::MAX_UNDO_STACK {
             self.undo_stack.remove(0);
@@ -302,61 +314,139 @@ impl Document {
 
     /// Undo the last action
     pub fn undo(&mut self) -> Result<()> {
-        let action = self.undo_stack.pop().ok_or(GridlineError::NothingToUndo)?;
+        let entry = self.undo_stack.pop().ok_or(GridlineError::NothingToUndo)?;
 
-        // Push inverse to redo stack
-        let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
-        self.redo_stack.push(UndoAction {
-            cell_ref: action.cell_ref.clone(),
-            old_cell: current,
-            new_cell: action.new_cell.clone(),
-        });
+        match entry {
+            UndoEntry::Single(action) => {
+                // Push inverse to redo stack
+                let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
+                self.redo_stack.push(UndoEntry::Single(UndoAction {
+                    cell_ref: action.cell_ref.clone(),
+                    old_cell: action.old_cell.clone(), // State after undo (for undo-after-redo)
+                    new_cell: current,                 // State before undo (what redo restores)
+                }));
 
-        let cell_ref = action.cell_ref.clone();
+                let cell_ref = action.cell_ref.clone();
 
-        // Restore old state
-        match action.old_cell {
-            Some(cell) => {
-                self.grid.insert(action.cell_ref, cell);
+                // Restore old state
+                match action.old_cell {
+                    Some(cell) => {
+                        self.grid.insert(action.cell_ref, cell);
+                    }
+                    None => {
+                        self.grid.remove(&action.cell_ref);
+                    }
+                }
+
+                // Rebuild dependencies (DashMap shares data, so builtins already see updates)
+                self.rebuild_dependents();
+                self.mark_dependents_dirty(&cell_ref);
             }
-            None => {
-                self.grid.remove(&action.cell_ref);
+            UndoEntry::Batch(actions) => {
+                // Build inverse batch for redo
+                let mut redo_actions = Vec::with_capacity(actions.len());
+                let mut affected_cells = Vec::with_capacity(actions.len());
+
+                for action in &actions {
+                    let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
+                    redo_actions.push(UndoAction {
+                        cell_ref: action.cell_ref.clone(),
+                        old_cell: action.old_cell.clone(), // State after undo
+                        new_cell: current,                 // State before undo
+                    });
+                    affected_cells.push(action.cell_ref.clone());
+                }
+
+                self.redo_stack.push(UndoEntry::Batch(redo_actions));
+
+                // Restore old states
+                for action in actions {
+                    match action.old_cell {
+                        Some(cell) => {
+                            self.grid.insert(action.cell_ref, cell);
+                        }
+                        None => {
+                            self.grid.remove(&action.cell_ref);
+                        }
+                    }
+                }
+
+                // Rebuild dependencies once
+                self.rebuild_dependents();
+                for cell_ref in affected_cells {
+                    self.mark_dependents_dirty(&cell_ref);
+                }
             }
         }
-
-        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
-        self.rebuild_dependents();
-        self.mark_dependents_dirty(&cell_ref);
         Ok(())
     }
 
     /// Redo the last undone action
     pub fn redo(&mut self) -> Result<()> {
-        let action = self.redo_stack.pop().ok_or(GridlineError::NothingToRedo)?;
+        let entry = self.redo_stack.pop().ok_or(GridlineError::NothingToRedo)?;
 
-        // Push inverse to undo stack
-        let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
-        self.undo_stack.push(UndoAction {
-            cell_ref: action.cell_ref.clone(),
-            old_cell: current,
-            new_cell: action.new_cell.clone(),
-        });
+        match entry {
+            UndoEntry::Single(action) => {
+                // Push inverse to undo stack
+                let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
+                self.undo_stack.push(UndoEntry::Single(UndoAction {
+                    cell_ref: action.cell_ref.clone(),
+                    old_cell: current,
+                    new_cell: action.new_cell.clone(),
+                }));
 
-        let cell_ref = action.cell_ref.clone();
+                let cell_ref = action.cell_ref.clone();
 
-        // Apply new state
-        match action.new_cell {
-            Some(cell) => {
-                self.grid.insert(action.cell_ref, cell);
+                // Apply new state
+                match action.new_cell {
+                    Some(cell) => {
+                        self.grid.insert(action.cell_ref, cell);
+                    }
+                    None => {
+                        self.grid.remove(&action.cell_ref);
+                    }
+                }
+
+                // Rebuild dependencies (DashMap shares data, so builtins already see updates)
+                self.rebuild_dependents();
+                self.mark_dependents_dirty(&cell_ref);
             }
-            None => {
-                self.grid.remove(&action.cell_ref);
+            UndoEntry::Batch(actions) => {
+                // Build inverse batch for undo
+                let mut undo_actions = Vec::with_capacity(actions.len());
+                let mut affected_cells = Vec::with_capacity(actions.len());
+
+                for action in &actions {
+                    let current = self.grid.get(&action.cell_ref).map(|r| r.clone());
+                    undo_actions.push(UndoAction {
+                        cell_ref: action.cell_ref.clone(),
+                        old_cell: current,
+                        new_cell: action.new_cell.clone(),
+                    });
+                    affected_cells.push(action.cell_ref.clone());
+                }
+
+                self.undo_stack.push(UndoEntry::Batch(undo_actions));
+
+                // Apply new states
+                for action in actions {
+                    match action.new_cell {
+                        Some(cell) => {
+                            self.grid.insert(action.cell_ref, cell);
+                        }
+                        None => {
+                            self.grid.remove(&action.cell_ref);
+                        }
+                    }
+                }
+
+                // Rebuild dependencies once
+                self.rebuild_dependents();
+                for cell_ref in affected_cells {
+                    self.mark_dependents_dirty(&cell_ref);
+                }
             }
         }
-
-        // Rebuild dependencies (DashMap shares data, so builtins already see updates)
-        self.rebuild_dependents();
-        self.mark_dependents_dirty(&cell_ref);
         Ok(())
     }
 

@@ -5,7 +5,7 @@
 //! The app operates in different [`Mode`]s (Normal, Edit, Command, Visual) similar
 //! to Vim's modal editing.
 
-use gridline_core::{Document, Result};
+use gridline_core::{Document, Result, ScriptContext};
 use gridline_engine::engine::{Cell, CellRef};
 use gridline_engine::plot::{parse_plot_spec, PlotSpec};
 use std::collections::HashMap;
@@ -630,11 +630,54 @@ impl App {
             "help" | "h" => {
                 self.help_modal = true;
             }
+            "call" => {
+                // :call func_name(args) - Execute a function from custom Rhai script
+                if let Some(expr) = args {
+                    self.execute_rhai_script(expr);
+                } else {
+                    self.status_message = "Usage: :call func_name(args)".to_string();
+                }
+            }
+            "rhai" => {
+                // :rhai expression - Execute arbitrary Rhai expression
+                if let Some(expr) = args {
+                    self.execute_rhai_script(expr);
+                } else {
+                    self.status_message = "Usage: :rhai <expression>".to_string();
+                }
+            }
             _ => {
                 self.status_message = format!("Unknown command: {}", command);
             }
         }
         false
+    }
+
+    /// Execute a Rhai script with access to spreadsheet write operations.
+    fn execute_rhai_script(&mut self, script: &str) {
+        // Build script context with cursor position and selection
+        let context = if let Some(((r1, c1), (r2, c2))) = self.get_selection() {
+            ScriptContext::with_selection(self.cursor_row, self.cursor_col, r1, c1, r2, c2)
+        } else {
+            ScriptContext::new(self.cursor_row, self.cursor_col)
+        };
+
+        match self.core.execute_script(script, &context) {
+            Ok(result) => {
+                let mut msg = format!("{} cell(s) modified", result.cells_modified);
+                if let Some(val) = result.return_value {
+                    msg.push_str(&format!(" => {}", val));
+                }
+                self.status_message = msg;
+                // Exit visual mode after script execution
+                if self.mode == Mode::Visual {
+                    self.exit_visual_mode();
+                }
+            }
+            Err(e) => {
+                self.status_message = format!("Script error: {}", e);
+            }
+        }
     }
 
     /// Save to current file path

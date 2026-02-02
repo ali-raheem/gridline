@@ -1,6 +1,6 @@
 //! gridline-engine - Spreadsheet engine + Rhai integration.
 
-pub(crate) mod builtins;
+pub mod builtins;
 pub mod engine;
 pub mod plot;
 

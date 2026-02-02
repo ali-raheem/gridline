@@ -9,12 +9,21 @@ use std::path::PathBuf;
 /// Maximum number of undo entries to keep
 pub(crate) const MAX_UNDO_STACK: usize = 100;
 
-/// Represents an undoable action
+/// Represents an undoable action for a single cell
 #[derive(Clone)]
 pub struct UndoAction {
     pub cell_ref: CellRef,
     pub old_cell: Option<Cell>,
     pub new_cell: Option<Cell>,
+}
+
+/// Represents an undo entry (single action or batch from script)
+#[derive(Clone)]
+pub enum UndoEntry {
+    /// A single cell modification
+    Single(UndoAction),
+    /// A batch of modifications from a script execution
+    Batch(Vec<UndoAction>),
 }
 
 /// UI-agnostic document state for the spreadsheet.
@@ -42,9 +51,9 @@ pub struct Document {
     /// DashMap is internally Arc-based, clones are cheap.
     pub value_cache: ValueCache,
     /// Undo stack
-    pub undo_stack: Vec<UndoAction>,
+    pub undo_stack: Vec<UndoEntry>,
     /// Redo stack
-    pub redo_stack: Vec<UndoAction>,
+    pub redo_stack: Vec<UndoEntry>,
 }
 
 impl Document {

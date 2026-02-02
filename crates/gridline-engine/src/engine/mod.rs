@@ -27,7 +27,8 @@ pub use cycle::detect_cycle;
 pub use deps::{extract_dependencies, parse_range};
 pub use eval::{
     create_engine, create_engine_with_cache, create_engine_with_functions,
-    create_engine_with_functions_and_cache, eval_with_functions, eval_with_functions_script,
+    create_engine_with_functions_and_cache, create_script_engine,
+    create_script_engine_with_functions, eval_with_functions, eval_with_functions_script,
 };
 // Legacy exports for backward compatibility
 #[allow(unused_imports)]
