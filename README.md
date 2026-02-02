@@ -8,7 +8,7 @@
 
 Gridline is a terminal spreadsheet with Rhai support. Cells can contain numbers, text, or formulas powered by the [Rhai scripting language](https://rhai.rs/book/index.html). Your sheet lives in a plain text file, and your reusable logic can live in a separate `.rhai` functions file.
 
-Interfaces: TUI is the default and primary experience (`cargo run`, `cargo install gridline`). The GUI is behind a feature flag and is a work in progress. `webui` is a planned future interface.
+Interfaces: TUI is the default and primary experience (`cargo run`, `cargo install gridline`) and is fairly mature. The GUI is behind a feature flag, still experimental, and subject to breaking changes as the vision evolves. `webui` is a planned future interface.
 
 What you get (today):
 - TUI grid with a formula bar and command mode
@@ -69,7 +69,7 @@ Open an example file:
 ```bash
 cargo run -- examples/plot.grid
 
-# GUI (work in progress)
+# GUI (experimental, breaking changes expected)
 cargo run --features gui --bin gridline-gui -- examples/plot.grid
 
 # WebUI (stub / future)
