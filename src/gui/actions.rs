@@ -53,7 +53,6 @@ pub enum Action {
 
     /// Save the document.
     Save,
-
     // Future actions:
     // EnterCommandMode,
     // ExecuteCommand(String),

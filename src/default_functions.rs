@@ -21,7 +21,7 @@ pub(crate) fn prepend_default_functions_if_present(
     };
     if path.is_file() {
         functions.insert(0, path);
-    }else{
+    } else {
         eprintln!("Failed to load functions file from {}.", path.display());
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Conventions:
 //! - Spreadsheet-facing built-in names are ALL CAPS (e.g. `SUM`, `AVG`).
-//! - Built-ins rewrite to lowercase Rhai function names (e.g. `sum_range`).
+//! - Built-ins rewrite to ALLCAPS Rhai function names (e.g. `SUM_RANGE`).
 //! - If you add a new built-in range function, update `RANGE_BUILTINS` and
 //!   register its implementation in `register_builtins`.
 
@@ -29,17 +29,17 @@ pub const RANGE_BUILTINS: &[RangeBuiltin] = &[
     },
     RangeBuiltin {
         sheet_name: "AVG",
-        rhai_name: "avg_range",
+        rhai_name: "AVG_RANGE",
         description: "Average of numeric values in a cell range",
     },
     RangeBuiltin {
         sheet_name: "COUNT",
-        rhai_name: "count_range",
+        rhai_name: "COUNT_RANGE",
         description: "Count of non-empty cells in a cell range",
     },
     RangeBuiltin {
         sheet_name: "MIN",
-        rhai_name: "min_range",
+        rhai_name: "MIN_RANGE",
         description: "Minimum numeric value in a cell range",
     },
     RangeBuiltin {
@@ -180,7 +180,8 @@ fn make_plot_spec(
 
 /// Register all built-in functions into the Rhai engine.
 pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCache) {
-    // cell(row, col): numeric value at cell (text/script -> NaN)
+    // CELL(row, col): numeric value at cell (text/script -> NaN)
+
     // Checks value cache first for pre-evaluated values
     let grid_cell = grid.clone();
     let cache_cell = value_cache.clone();
@@ -216,7 +217,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // value(row, col): typed value at cell (number/text/bool) as Dynamic.
+    // VALUE(row, col): typed value at cell (number/text/bool) as Dynamic.
+
     // - Empty cells => "" (so things like `len(@A1)` behave intuitively)
     // - Script cells => use cached value from value_cache, fall back to eval
     // Checks value cache first for pre-evaluated values
@@ -251,7 +253,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // sum_range(r1, c1, r2, c2)
+    // SUM_RANGE(r1, c1, r2, c2)
+
     let grid_sum = grid.clone();
     let cache_sum = value_cache.clone();
     engine.register_fn(
@@ -271,7 +274,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // avg_range(r1, c1, r2, c2)
+    // AVG_RANGE(r1, c1, r2, c2)
+
     let grid_avg = grid.clone();
     let cache_avg = value_cache.clone();
     engine.register_fn(
@@ -293,7 +297,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // count_range(r1, c1, r2, c2): count non-empty
+    // COUNT_RANGE(r1, c1, r2, c2): count non-empty
+
     let grid_count = grid.clone();
     let cache_count = value_cache.clone();
     engine.register_fn(
@@ -322,7 +327,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // min_range(r1, c1, r2, c2)
+    // MIN_RANGE(r1, c1, r2, c2)
+
     let grid_min = grid.clone();
     let cache_min = value_cache.clone();
     engine.register_fn(
@@ -349,7 +355,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // max_range(r1, c1, r2, c2)
+    // MAX_RANGE(r1, c1, r2, c2)
+
     let grid_max = grid.clone();
     let cache_max = value_cache.clone();
     engine.register_fn(
@@ -467,13 +474,12 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     );
 
     // Method form: (0..=10).SPILL() or arr.SPILL()
-    engine.register_fn("SPILL", |arr: &mut rhai::Array| -> rhai::Array { arr.clone() });
-    engine.register_fn(
-        "SPILL",
-        |range: &mut std::ops::Range<i64>| -> rhai::Array {
-            range.clone().map(Dynamic::from).collect()
-        },
-    );
+    engine.register_fn("SPILL", |arr: &mut rhai::Array| -> rhai::Array {
+        arr.clone()
+    });
+    engine.register_fn("SPILL", |range: &mut std::ops::Range<i64>| -> rhai::Array {
+        range.clone().map(Dynamic::from).collect()
+    });
     engine.register_fn(
         "SPILL",
         |range: &mut std::ops::RangeInclusive<i64>| -> rhai::Array {
@@ -481,7 +487,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
-    // vec_range(r1, c1, r2, c2): returns array of cell values
+    // VEC_RANGE(r1, c1, r2, c2): returns array of cell values
+
     // Checks spill map first for spilled array values
     // Respects range direction: VEC(A3:A1) returns [A3, A2, A1]
     let grid_vec = grid.clone();
@@ -535,9 +542,15 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     // Rhai doesn't have built-in pow for floats, so we register it here
     // Handle all type combinations since cell values can be int or float
     engine.register_fn("POW", |base: f64, exp: f64| -> f64 { base.powf(exp) });
-    engine.register_fn("POW", |base: f64, exp: i64| -> f64 { base.powf(exp as f64) });
-    engine.register_fn("POW", |base: i64, exp: f64| -> f64 { (base as f64).powf(exp) });
-    engine.register_fn("POW", |base: i64, exp: i64| -> f64 { (base as f64).powf(exp as f64) });
+    engine.register_fn("POW", |base: f64, exp: i64| -> f64 {
+        base.powf(exp as f64)
+    });
+    engine.register_fn("POW", |base: i64, exp: f64| -> f64 {
+        (base as f64).powf(exp)
+    });
+    engine.register_fn("POW", |base: i64, exp: i64| -> f64 {
+        (base as f64).powf(exp as f64)
+    });
 
     // SQRT(x): square root
     engine.register_fn("SQRT", |x: f64| -> f64 { x.sqrt() });
@@ -662,79 +675,67 @@ pub fn register_script_builtins(
     // SET_CELL(row, col, value) - Set cell by row/col indices
     let grid_set = grid.clone();
     let mods_set = modifications.clone();
-    engine.register_fn(
-        "SET_CELL",
-        move |row: i64, col: i64, value: Dynamic| {
-            let cell_ref = CellRef::new(row as usize, col as usize);
-            let old_cell = grid_set.get(&cell_ref).map(|r| r.clone());
+    engine.register_fn("SET_CELL", move |row: i64, col: i64, value: Dynamic| {
+        let cell_ref = CellRef::new(row as usize, col as usize);
+        let old_cell = grid_set.get(&cell_ref).map(|r| r.clone());
 
-            let new_cell = dynamic_to_cell(value);
-            grid_set.insert(cell_ref.clone(), new_cell.clone());
+        let new_cell = dynamic_to_cell(value);
+        grid_set.insert(cell_ref.clone(), new_cell.clone());
 
-            let mut mods = mods_set.lock().unwrap();
-            // Only record first old_cell for each position (preserves original state for undo)
-            mods.entry(cell_ref)
-                .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
-                .or_insert((old_cell, Some(new_cell)));
-        },
-    );
+        let mut mods = mods_set.lock().unwrap();
+        // Only record first old_cell for each position (preserves original state for undo)
+        mods.entry(cell_ref)
+            .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
+            .or_insert((old_cell, Some(new_cell)));
+    });
 
     // SET_CELL("A1", value) - Set cell by A1 notation
     let grid_set_a1 = grid.clone();
     let mods_set_a1 = modifications.clone();
-    engine.register_fn(
-        "SET_CELL",
-        move |cell_str: &str, value: Dynamic| {
-            let Some(cell_ref) = CellRef::from_str(cell_str) else {
-                return; // Invalid cell reference - silently ignore
-            };
-            let old_cell = grid_set_a1.get(&cell_ref).map(|r| r.clone());
+    engine.register_fn("SET_CELL", move |cell_str: &str, value: Dynamic| {
+        let Some(cell_ref) = CellRef::from_str(cell_str) else {
+            return; // Invalid cell reference - silently ignore
+        };
+        let old_cell = grid_set_a1.get(&cell_ref).map(|r| r.clone());
 
-            let new_cell = dynamic_to_cell(value);
-            grid_set_a1.insert(cell_ref.clone(), new_cell.clone());
+        let new_cell = dynamic_to_cell(value);
+        grid_set_a1.insert(cell_ref.clone(), new_cell.clone());
 
-            let mut mods = mods_set_a1.lock().unwrap();
-            mods.entry(cell_ref)
-                .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
-                .or_insert((old_cell, Some(new_cell)));
-        },
-    );
+        let mut mods = mods_set_a1.lock().unwrap();
+        mods.entry(cell_ref)
+            .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
+            .or_insert((old_cell, Some(new_cell)));
+    });
 
     // CLEAR_CELL(row, col) - Clear cell by row/col indices
     let grid_clear = grid.clone();
     let mods_clear = modifications.clone();
-    engine.register_fn(
-        "CLEAR_CELL",
-        move |row: i64, col: i64| {
-            let cell_ref = CellRef::new(row as usize, col as usize);
-            let old_cell = grid_clear.get(&cell_ref).map(|r| r.clone());
-            grid_clear.remove(&cell_ref);
+    engine.register_fn("CLEAR_CELL", move |row: i64, col: i64| {
+        let cell_ref = CellRef::new(row as usize, col as usize);
+        let old_cell = grid_clear.get(&cell_ref).map(|r| r.clone());
+        grid_clear.remove(&cell_ref);
 
-            let mut mods = mods_clear.lock().unwrap();
-            mods.entry(cell_ref)
-                .and_modify(|(_, nc)| *nc = None)
-                .or_insert((old_cell, None));
-        },
-    );
+        let mut mods = mods_clear.lock().unwrap();
+        mods.entry(cell_ref)
+            .and_modify(|(_, nc)| *nc = None)
+            .or_insert((old_cell, None));
+    });
 
     // CLEAR_CELL("A1") - Clear cell by A1 notation
     let grid_clear_a1 = grid.clone();
     let mods_clear_a1 = modifications.clone();
-    engine.register_fn(
-        "CLEAR_CELL",
-        move |cell_str: &str| {
-            let Some(cell_ref) = CellRef::from_str(cell_str) else {
-                return;
-            };
-            let old_cell = grid_clear_a1.get(&cell_ref).map(|r| r.clone());
-            grid_clear_a1.remove(&cell_ref);
+    engine.register_fn("CLEAR_CELL", move |cell_str: &str| {
+        let Some(cell_ref) = CellRef::from_str(cell_str) else {
+            return;
+        };
+        let old_cell = grid_clear_a1.get(&cell_ref).map(|r| r.clone());
+        grid_clear_a1.remove(&cell_ref);
 
-            let mut mods = mods_clear_a1.lock().unwrap();
-            mods.entry(cell_ref)
-                .and_modify(|(_, nc)| *nc = None)
-                .or_insert((old_cell, None));
-        },
-    );
+        let mut mods = mods_clear_a1.lock().unwrap();
+        mods.entry(cell_ref)
+            .and_modify(|(_, nc)| *nc = None)
+            .or_insert((old_cell, None));
+    });
 
     // SET_RANGE(r1, c1, r2, c2, value) - Fill range with value
     let grid_set_range = grid.clone();
@@ -767,28 +768,25 @@ pub fn register_script_builtins(
     // CLEAR_RANGE(r1, c1, r2, c2) - Clear a range of cells
     let grid_clear_range = grid.clone();
     let mods_clear_range = modifications.clone();
-    engine.register_fn(
-        "CLEAR_RANGE",
-        move |r1: i64, c1: i64, r2: i64, c2: i64| {
-            let min_row = r1.min(r2) as usize;
-            let max_row = r1.max(r2) as usize;
-            let min_col = c1.min(c2) as usize;
-            let max_col = c1.max(c2) as usize;
+    engine.register_fn("CLEAR_RANGE", move |r1: i64, c1: i64, r2: i64, c2: i64| {
+        let min_row = r1.min(r2) as usize;
+        let max_row = r1.max(r2) as usize;
+        let min_col = c1.min(c2) as usize;
+        let max_col = c1.max(c2) as usize;
 
-            let mut mods = mods_clear_range.lock().unwrap();
-            for row in min_row..=max_row {
-                for col in min_col..=max_col {
-                    let cell_ref = CellRef::new(row, col);
-                    let old_cell = grid_clear_range.get(&cell_ref).map(|r| r.clone());
-                    grid_clear_range.remove(&cell_ref);
+        let mut mods = mods_clear_range.lock().unwrap();
+        for row in min_row..=max_row {
+            for col in min_col..=max_col {
+                let cell_ref = CellRef::new(row, col);
+                let old_cell = grid_clear_range.get(&cell_ref).map(|r| r.clone());
+                grid_clear_range.remove(&cell_ref);
 
-                    mods.entry(cell_ref)
-                        .and_modify(|(_, nc)| *nc = None)
-                        .or_insert((old_cell, None));
-                }
+                mods.entry(cell_ref)
+                    .and_modify(|(_, nc)| *nc = None)
+                    .or_insert((old_cell, None));
             }
-        },
-    );
+        }
+    });
 }
 
 /// Convert a Rhai Dynamic value to a Cell.
@@ -825,7 +823,7 @@ mod tests {
     #[test]
     fn test_range_rhai_name_mapping() {
         assert_eq!(range_rhai_name("SUM"), Some("SUM_RANGE"));
-        assert_eq!(range_rhai_name("AVG"), Some("avg_range"));
+        assert_eq!(range_rhai_name("AVG"), Some("AVG_RANGE"));
         assert_eq!(range_rhai_name("NOPE"), None);
     }
 
@@ -965,7 +963,8 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // SPILL on array returns the same array
-        let result: rhai::Array = engine.eval("SPILL(vec_range(0, 0, 2, 0))").unwrap();
+        let result: rhai::Array = engine.eval("SPILL(VEC_RANGE(0, 0, 2, 0))").unwrap();
+
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].clone().cast::<f64>(), 10.0);
         assert_eq!(result[1].clone().cast::<f64>(), 20.0);
@@ -1102,16 +1101,20 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // Count values > 10: 20, 30 = 2
-        let result: i64 = engine.eval("COUNTIF_RANGE(0, 0, 3, 0, |x| x > 10)").unwrap();
+        let result: i64 = engine
+            .eval("COUNTIF_RANGE(0, 0, 3, 0, |x| x > 10)")
+            .unwrap();
         assert_eq!(result, 2);
 
         // Count values >= 10: 10, 20, 30 = 3
-        let result: i64 = engine.eval("COUNTIF_RANGE(0, 0, 3, 0, |x| x >= 10)").unwrap();
+        let result: i64 = engine
+            .eval("COUNTIF_RANGE(0, 0, 3, 0, |x| x >= 10)")
+            .unwrap();
         assert_eq!(result, 3);
     }
 
     #[test]
-    fn test_script_builtins_SET_CELL() {
+    fn test_script_builtins_set_cell() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         let value_cache = ValueCache::default();
         let modifications: ScriptModifications =
@@ -1137,7 +1140,7 @@ mod tests {
     }
 
     #[test]
-    fn test_script_builtins_CLEAR_CELL() {
+    fn test_script_builtins_clear_cell() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(1, 1), Cell::new_text("hello"));
@@ -1160,7 +1163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_script_builtins_SET_RANGE() {
+    fn test_script_builtins_set_range() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         let value_cache = ValueCache::default();
         let modifications: ScriptModifications =
@@ -1183,12 +1186,15 @@ mod tests {
     }
 
     #[test]
-    fn test_script_builtins_CLEAR_RANGE() {
+    fn test_script_builtins_clear_range() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         // Fill a 2x2 grid
         for row in 0..=1 {
             for col in 0..=1 {
-                grid.insert(CellRef::new(row, col), Cell::new_number(row as f64 + col as f64));
+                grid.insert(
+                    CellRef::new(row, col),
+                    Cell::new_number(row as f64 + col as f64),
+                );
             }
         }
 
@@ -1212,7 +1218,7 @@ mod tests {
     }
 
     #[test]
-    fn test_script_builtins_SET_CELL_formula() {
+    fn test_script_builtins_set_cell_formula() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         let value_cache = ValueCache::default();
         let modifications: ScriptModifications =

@@ -1,6 +1,6 @@
 use super::{Document, UndoAction, UndoEntry};
 use crate::error::{GridlineError, Result};
-use gridline_engine::engine::{shift_formula_references, Cell, CellRef, CellType, ShiftOperation};
+use gridline_engine::engine::{Cell, CellRef, CellType, ShiftOperation, shift_formula_references};
 
 /// Dimension for row/column operations
 #[derive(Copy, Clone)]

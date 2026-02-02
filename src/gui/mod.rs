@@ -17,14 +17,14 @@ pub mod state;
 pub mod ui;
 
 use eframe::egui;
-use gridline_core::{Document, CellRef};
+use gridline_core::{CellRef, Document};
 
-use self::actions::{apply_action, Action};
+use self::actions::{Action, apply_action};
 use self::app::GuiApp;
 use self::clipboard::{ClipboardProvider, SystemClipboard};
 use self::input::handle_keyboard_input;
 use self::state::GuiState;
-use self::ui::{apply_theme, draw_central_grid, draw_status_bar, draw_top_panel, CellRenderer};
+use self::ui::{CellRenderer, apply_theme, draw_central_grid, draw_status_bar, draw_top_panel};
 
 /// Main GUI application wrapper implementing eframe::App trait.
 pub struct GridlineGuiApp {
@@ -53,7 +53,10 @@ impl GridlineGuiApp {
             Action::CopySelection => {
                 let text = self.app.copy_selection_to_string();
                 let count = text.lines().count();
-                let ok = <SystemClipboard as ClipboardProvider>::set_text(&mut self.clipboard, text.clone());
+                let ok = <SystemClipboard as ClipboardProvider>::set_text(
+                    &mut self.clipboard,
+                    text.clone(),
+                );
                 if ok {
                     self.app.status = format!("✓ Copied {} cells", count.max(1));
                 } else {
@@ -63,7 +66,10 @@ impl GridlineGuiApp {
             Action::CutSelection => {
                 let text = self.app.copy_selection_to_string();
                 let count = text.lines().count();
-                let ok = <SystemClipboard as ClipboardProvider>::set_text(&mut self.clipboard, text.clone());
+                let ok = <SystemClipboard as ClipboardProvider>::set_text(
+                    &mut self.clipboard,
+                    text.clone(),
+                );
                 self.app.clear_selection();
                 if ok {
                     self.app.status = format!("✓ Cut {} cells", count.max(1));
@@ -79,7 +85,9 @@ impl GridlineGuiApp {
                     self.app.status = format!("✓ Pasted {} cells", count.max(1));
                 } else {
                     // Otherwise try to read from system clipboard
-                    if let Some(clipboard_text) = <SystemClipboard as ClipboardProvider>::get_text(&mut self.clipboard) {
+                    if let Some(clipboard_text) =
+                        <SystemClipboard as ClipboardProvider>::get_text(&mut self.clipboard)
+                    {
                         let count = clipboard_text.lines().count();
                         let paste_action = Action::Paste(clipboard_text);
                         apply_action(&mut self.app, &mut self.state, paste_action);
@@ -89,36 +97,30 @@ impl GridlineGuiApp {
                     }
                 }
             }
-            Action::Save => {
-                match self.app.save() {
-                    Ok(_) => {
-                        self.app.status = "✓ File saved".to_string();
-                    }
-                    Err(e) => {
-                        self.app.status = format!("✗ Save failed: {}", e);
-                    }
+            Action::Save => match self.app.save() {
+                Ok(_) => {
+                    self.app.status = "✓ File saved".to_string();
                 }
-            }
-            Action::Undo => {
-                match self.app.undo() {
-                    Ok(()) => {
-                        self.app.status = "✓ Undo".to_string();
-                    }
-                    Err(e) => {
-                        self.app.status = format!("✗ Undo failed: {}", e);
-                    }
+                Err(e) => {
+                    self.app.status = format!("✗ Save failed: {}", e);
                 }
-            }
-            Action::Redo => {
-                match self.app.redo() {
-                    Ok(()) => {
-                        self.app.status = "✓ Redo".to_string();
-                    }
-                    Err(e) => {
-                        self.app.status = format!("✗ Redo failed: {}", e);
-                    }
+            },
+            Action::Undo => match self.app.undo() {
+                Ok(()) => {
+                    self.app.status = "✓ Undo".to_string();
                 }
-            }
+                Err(e) => {
+                    self.app.status = format!("✗ Undo failed: {}", e);
+                }
+            },
+            Action::Redo => match self.app.redo() {
+                Ok(()) => {
+                    self.app.status = "✓ Redo".to_string();
+                }
+                Err(e) => {
+                    self.app.status = format!("✗ Redo failed: {}", e);
+                }
+            },
             Action::ClearSelection => {
                 self.app.clear_selection();
                 self.app.status = "✓ Cleared".to_string();
@@ -162,16 +164,14 @@ impl eframe::App for GridlineGuiApp {
         }
 
         // Top panel: formula bar
-        egui::TopBottomPanel::top("formula_bar")
-            .show(ctx, |ui| {
-                draw_top_panel(ctx, ui, &mut self.app, &mut self.state);
-            });
+        egui::TopBottomPanel::top("formula_bar").show(ctx, |ui| {
+            draw_top_panel(ctx, ui, &mut self.app, &mut self.state);
+        });
 
         // Bottom panel: status bar
-        egui::TopBottomPanel::bottom("status_bar")
-            .show(ctx, |ui| {
-                draw_status_bar(ui, &self.app, &self.state);
-            });
+        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+            draw_status_bar(ui, &self.app, &self.state);
+        });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Handle other keyboard shortcuts in the grid area

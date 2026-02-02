@@ -171,7 +171,10 @@ impl PlotData {
         }
 
         if skipped_count > 0 {
-            warnings.push(format!("{} non-numeric cell(s) treated as 0", skipped_count));
+            warnings.push(format!(
+                "{} non-numeric cell(s) treated as 0",
+                skipped_count
+            ));
         }
 
         if points.is_empty() {

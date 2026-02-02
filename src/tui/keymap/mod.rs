@@ -11,8 +11,8 @@ mod types;
 pub use parse::load_keymap;
 pub use types::{Action, Binding, CustomKeymap, KeyCombo, Keymap, KeymapBindings};
 
-use crossterm::event::KeyEvent;
 use crate::tui::app::Mode;
+use crossterm::event::KeyEvent;
 
 /// Translate a key event to an action based on the current keymap and mode.
 ///

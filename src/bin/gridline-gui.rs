@@ -66,8 +66,7 @@ fn main() -> eframe::Result<()> {
     });
 
     let mut options = eframe::NativeOptions::default();
-    options.viewport = egui::ViewportBuilder::default()
-        .with_fullscreen(true);
+    options.viewport = egui::ViewportBuilder::default().with_fullscreen(true);
 
     eframe::run_native(
         "Gridline",

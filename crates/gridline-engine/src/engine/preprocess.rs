@@ -1,10 +1,10 @@
 //! Formula preprocessing and reference transformation.
 //!
 //! Before formulas can be evaluated by Rhai, cell references like `A1` must
-//! be transformed into function calls like `cell(0, 0)`. This module handles:
+//! be transformed into function calls like `CELL(0, 0)`. This module handles:
 //!
-//! - **Preprocessing**: Converting `A1` → `cell(0, 0)` and `@A1` → `value(0, 0)`
-//! - **Range functions**: Converting `SUM(A1:B5)` → `sum_range(0, 0, 4, 1)`
+//! - **Preprocessing**: Converting `A1` → `CELL(0, 0)` and `@A1` → `VALUE(0, 0)`
+//! - **Range functions**: Converting `SUM(A1:B5)` → `SUM_RANGE(0, 0, 4, 1)`
 //! - **Reference shifting**: Adjusting references when rows/columns are inserted/deleted
 
 use regex::Regex;
@@ -187,9 +187,9 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
     out
 }
 
-/// Replace cell references like "A1" with Rhai function calls like "cell(0, 0)".
-/// Typed refs like "@A1" become "value(0, 0)" (returns Dynamic).
-/// Also transforms range functions like SUM(A1:B5, ...) into sum_range(0, 0, 4, 1, ...).
+/// Replace cell references like "A1" with Rhai function calls like "CELL(0, 0)".
+/// Typed refs like "@A1" become "VALUE(0, 0)" (returns Dynamic).
+/// Also transforms range functions like SUM(A1:B5, ...) into SUM_RANGE(0, 0, 4, 1, ...).
 pub fn preprocess_script(script: &str) -> String {
     preprocess_script_with_context(script, None)
 }
@@ -276,7 +276,7 @@ fn replace_cell_refs_outside_strings(script: &str) -> String {
             .replace_all(seg, |caps: &regex::Captures| {
                 let cell_ref = format!("{}{}", &caps[1], &caps[2]);
                 if let Some(cr) = CellRef::from_str(&cell_ref) {
-                    format!("value({}, {})", cr.row, cr.col)
+                    format!("VALUE({}, {})", cr.row, cr.col)
                 } else {
                     caps[0].to_string()
                 }
@@ -287,7 +287,7 @@ fn replace_cell_refs_outside_strings(script: &str) -> String {
             .replace_all(&seg, |caps: &regex::Captures| {
                 let cell_ref = format!("{}{}", &caps[1], &caps[2]);
                 if let Some(cr) = CellRef::from_str(&cell_ref) {
-                    format!("cell({}, {})", cr.row, cr.col)
+                    format!("CELL({}, {})", cr.row, cr.col)
                 } else {
                     caps[0].to_string()
                 }

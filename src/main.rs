@@ -37,7 +37,10 @@ fn run_command_mode(
     // Load custom functions
     for func_path in &functions_files {
         if let Err(e) = doc.load_functions(func_path) {
-            eprintln!("Warning: failed to load functions from {:?}: {}", func_path, e);
+            eprintln!(
+                "Warning: failed to load functions from {:?}: {}",
+                func_path, e
+            );
         }
     }
 
@@ -207,7 +210,9 @@ fn main() {
 
     // Command mode: evaluate formula and exit
     if let Some(formula) = command_formula {
-        if let Err(e) = run_command_mode(formula, functions_files, output_file, no_default_functions) {
+        if let Err(e) =
+            run_command_mode(formula, functions_files, output_file, no_default_functions)
+        {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
@@ -240,7 +245,10 @@ fn main() {
         }
         for func_path in &functions_files {
             if let Err(e) = doc.load_functions(func_path) {
-                eprintln!("Warning: failed to load functions from {:?}: {}", func_path, e);
+                eprintln!(
+                    "Warning: failed to load functions from {:?}: {}",
+                    func_path, e
+                );
             }
         }
 
@@ -257,7 +265,10 @@ fn main() {
     {
         // Prepend default.rhai so TUI and GUI share the same defaults.
         let mut all_functions = functions_files;
-        default_functions::prepend_default_functions_if_present(&mut all_functions, no_default_functions);
+        default_functions::prepend_default_functions_if_present(
+            &mut all_functions,
+            no_default_functions,
+        );
 
         let (keymap, warnings) = tui::load_keymap(keymap_name.as_deref(), keymap_file.as_ref());
         for warning in warnings {

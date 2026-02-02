@@ -87,12 +87,17 @@ impl Document {
     /// Execute a Rhai script with write access to the spreadsheet.
     ///
     /// The script can use:
-    /// - All read builtins (cell, value, sum_range, etc.)
-    /// - Write builtins (SET_CELL, clear_cell, set_range, clear_range)
+    /// - All read builtins (CELL, VALUE, SUM_RANGE, etc.)
+    /// - Write builtins (SET_CELL, CLEAR_CELL, SET_RANGE, CLEAR_RANGE)
+
     /// - Context variables (CURSOR_ROW, CURSOR_COL, HAS_SELECTION, SEL_R1, etc.)
     ///
     /// All modifications are collected into a single batch undo entry.
-    pub fn execute_script(&mut self, script: &str, context: &ScriptContext) -> Result<ScriptResult> {
+    pub fn execute_script(
+        &mut self,
+        script: &str,
+        context: &ScriptContext,
+    ) -> Result<ScriptResult> {
         // Create modifications tracker
         let modifications: ScriptModifications = Arc::new(Mutex::new(HashMap::new()));
 
@@ -113,7 +118,14 @@ impl Document {
         let full_script = format!("{}{}", context_decls, script);
 
         // Execute the script
-        let result = eval_with_functions_script(&engine, &full_script, custom_ast.as_ref().map(|_| self.custom_functions.as_deref()).flatten());
+        let result = eval_with_functions_script(
+            &engine,
+            &full_script,
+            custom_ast
+                .as_ref()
+                .map(|_| self.custom_functions.as_deref())
+                .flatten(),
+        );
 
         let return_value = match &result {
             Ok(val) if !val.is_unit() => Some(val.to_string()),
@@ -211,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_script_SET_CELL() {
+    fn test_execute_script_set_cell() {
         let mut doc = Document::new();
         let ctx = ScriptContext::new(0, 0);
 
@@ -227,11 +239,13 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_script_SET_CELL_a1_notation() {
+    fn test_execute_script_set_cell_a1_notation() {
         let mut doc = Document::new();
         let ctx = ScriptContext::new(0, 0);
 
-        let result = doc.execute_script(r#"SET_CELL("B2", "hello")"#, &ctx).unwrap();
+        let result = doc
+            .execute_script(r#"SET_CELL("B2", "hello")"#, &ctx)
+            .unwrap();
         assert_eq!(result.cells_modified, 1);
 
         // Verify cell was set at B2 (row 1, col 1)
@@ -292,8 +306,14 @@ mod tests {
         let cell0 = doc.grid.get(&CellRef::new(0, 0)).unwrap();
         let cell1 = doc.grid.get(&CellRef::new(1, 0)).unwrap();
         let cell2 = doc.grid.get(&CellRef::new(2, 0)).unwrap();
-        assert!(matches!(cell0.contents, gridline_engine::engine::CellType::Number(n) if (n - 1.0).abs() < 0.001));
-        assert!(matches!(cell1.contents, gridline_engine::engine::CellType::Number(n) if (n - 2.0).abs() < 0.001));
-        assert!(matches!(cell2.contents, gridline_engine::engine::CellType::Number(n) if (n - 3.0).abs() < 0.001));
+        assert!(
+            matches!(cell0.contents, gridline_engine::engine::CellType::Number(n) if (n - 1.0).abs() < 0.001)
+        );
+        assert!(
+            matches!(cell1.contents, gridline_engine::engine::CellType::Number(n) if (n - 2.0).abs() < 0.001)
+        );
+        assert!(
+            matches!(cell2.contents, gridline_engine::engine::CellType::Number(n) if (n - 3.0).abs() < 0.001)
+        );
     }
 }

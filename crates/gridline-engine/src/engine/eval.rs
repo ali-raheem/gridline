@@ -6,7 +6,7 @@
 
 use rhai::Engine;
 
-use super::{Dynamic, Grid, ValueCache, AST};
+use super::{AST, Dynamic, Grid, ValueCache};
 use crate::builtins::ScriptModifications;
 
 /// Create a Rhai engine with built-ins registered.

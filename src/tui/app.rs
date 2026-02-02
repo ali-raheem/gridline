@@ -7,7 +7,7 @@
 
 use gridline_core::{Document, Result, ScriptContext};
 use gridline_engine::engine::{Cell, CellRef};
-use gridline_engine::plot::{parse_plot_spec, PlotSpec};
+use gridline_engine::plot::{PlotSpec, parse_plot_spec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 

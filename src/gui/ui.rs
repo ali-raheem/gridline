@@ -94,11 +94,7 @@ pub fn draw_top_panel(
     ui.horizontal(|ui| {
         // Cell reference label (compact)
         let cell_ref = app.selection_label();
-        ui.label(
-            egui::RichText::new(cell_ref)
-                .monospace()
-                .size(13.0),
-        );
+        ui.label(egui::RichText::new(cell_ref).monospace().size(13.0));
         ui.separator();
 
         // Formula/value input - only show TextEdit when editing to avoid consuming keyboard shortcuts
@@ -120,8 +116,10 @@ pub fn draw_top_panel(
             }
 
             // Handle Enter/Escape in formula bar (only process if editing)
-            let pressed_enter = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
-            let pressed_escape = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+            let pressed_enter =
+                ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+            let pressed_escape =
+                ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
 
             // Commit edit on Enter
             if pressed_enter {
@@ -151,10 +149,7 @@ pub fn draw_top_panel(
             }
         } else {
             // When not editing, show read-only label instead
-            ui.label(
-                egui::RichText::new(&app.edit_buffer)
-                    .monospace()
-            );
+            ui.label(egui::RichText::new(&app.edit_buffer).monospace());
         }
 
         // File status indicator (minimal)
@@ -254,10 +249,7 @@ pub fn draw_central_grid(
 
                             let resp = ui.add_sized(
                                 [cell_w, cell_h],
-                                egui::SelectableLabel::new(
-                                    is_selected || is_in_range,
-                                    text,
-                                ),
+                                egui::SelectableLabel::new(is_selected || is_in_range, text),
                             );
                             if resp.clicked() {
                                 let extend = ui.input(|i| i.modifiers.shift);

@@ -45,7 +45,11 @@ impl Document {
                 let processed = preprocess_script_with_context(s, Some(cell_ref));
                 drop(cell);
 
-                match eval_with_functions_script(&self.engine, &processed, self.custom_functions.as_deref()) {
+                match eval_with_functions_script(
+                    &self.engine,
+                    &processed,
+                    self.custom_functions.as_deref(),
+                ) {
                     Ok(result) => {
                         if result.is_array() {
                             self.handle_array_spill(cell_ref, result)
@@ -229,5 +233,4 @@ impl Document {
             let _ = self.get_cell_display(&cell_ref);
         }
     }
-
 }

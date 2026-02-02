@@ -1,6 +1,6 @@
 use crate::error::Result;
 use gridline_engine::engine::{
-    create_engine_with_functions_and_cache, Cell, CellRef, Grid, ValueCache, AST,
+    AST, Cell, CellRef, Grid, ValueCache, create_engine_with_functions_and_cache,
 };
 use rhai::Engine;
 use std::collections::{HashMap, HashSet};

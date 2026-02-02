@@ -280,7 +280,11 @@ fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
                 if let Some(labels) = &labels_line {
                     parts.push(labels.clone());
                 }
-                parts.push(render_textplots(&data, plot_width_points, plot_height_points));
+                parts.push(render_textplots(
+                    &data,
+                    plot_width_points,
+                    plot_height_points,
+                ));
                 if !data.warnings.is_empty() {
                     parts.push(format!("Warning: {}", data.warnings.join("; ")));
                 }

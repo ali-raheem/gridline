@@ -2,7 +2,7 @@
 
 use crate::document::Document;
 use gridline_engine::engine::CellRef;
-use gridline_engine::plot::{parse_plot_spec, PlotData, PlotKind, PlotSpec, PLOT_PREFIX};
+use gridline_engine::plot::{PLOT_PREFIX, PlotData, PlotKind, PlotSpec, parse_plot_spec};
 use std::io::Write;
 use std::path::Path;
 
@@ -180,7 +180,8 @@ mod tests {
         let actual = fs::read_to_string(&output_path).unwrap();
         let expected = fs::read_to_string(expected_path).unwrap();
 
-        assert_eq!(actual, expected);
+        let normalize = |text: String| text.replace("\r\n", "\n");
+        assert_eq!(normalize(actual), normalize(expected));
     }
 }
 
