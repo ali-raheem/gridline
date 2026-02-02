@@ -21,7 +21,7 @@ pub fn write_grd_content(grid: &Grid) -> String {
     cells.sort_by(|a, b| {
         let a_key = a.key();
         let b_key = b.key();
-        a_key.row.cmp(&b_key.row).then(a_key.col.cmp(&b_key.col))
+        a_key.col.cmp(&b_key.col).then(a_key.row.cmp(&b_key.row))
     });
 
     for entry in cells {
@@ -86,7 +86,7 @@ mod tests {
     fn test_skip_empty_cells() {
         let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_empty());
-        grid.insert(CellRef::new(0, 1), Cell::new_number(42.0));
+        grid.insert(CellRef::new(1, 0), Cell::new_number(42.0));
         let content = write_grd_content(&grid);
         assert!(!content.contains("A1:"));
         assert!(content.contains("B1: 42"));
@@ -97,7 +97,7 @@ mod tests {
         let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
         grid.insert(CellRef::new(1, 1), Cell::new_number(3.0)); // B2
         grid.insert(CellRef::new(0, 0), Cell::new_number(1.0)); // A1
-        grid.insert(CellRef::new(0, 1), Cell::new_number(2.0)); // B1
+        grid.insert(CellRef::new(1, 0), Cell::new_number(2.0)); // B1
         let content = write_grd_content(&grid);
         let lines: Vec<_> = content.lines().collect();
         // After header, should be A1, B1, B2

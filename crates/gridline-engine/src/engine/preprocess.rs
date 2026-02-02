@@ -1,10 +1,10 @@
 //! Formula preprocessing and reference transformation.
 //!
 //! Before formulas can be evaluated by Rhai, cell references like `A1` must
-//! be transformed into function calls like `cell(0, 0)`. This module handles:
+//! be transformed into function calls like `CELL(0, 0)`. This module handles:
 //!
-//! - **Preprocessing**: Converting `A1` → `cell(0, 0)` and `@A1` → `value(0, 0)`
-//! - **Range functions**: Converting `SUM(A1:B5)` → `sum_range(0, 0, 4, 1)`
+//! - **Preprocessing**: Converting `A1` → `CELL(0, 0)` and `@A1` → `VALUE(0, 0)`
+//! - **Range functions**: Converting `SUM(A1:B5)` → `SUM_RANGE(0, 0, 1, 4)` (col/row)
 //! - **Reference shifting**: Adjusting references when rows/columns are inserted/deleted
 
 use regex::Regex;
@@ -78,7 +78,7 @@ fn shift_single_ref(cell_ref_str: &str, op: ShiftOperation) -> String {
     match op {
         ShiftOperation::InsertRow(at_row) => {
             if cr.row >= at_row {
-                CellRef::new(cr.row + 1, cr.col).to_string()
+                CellRef::new(cr.col, cr.row + 1).to_string()
             } else {
                 cr.to_string()
             }
@@ -87,14 +87,14 @@ fn shift_single_ref(cell_ref_str: &str, op: ShiftOperation) -> String {
             if cr.row == at_row {
                 "#REF!".to_string()
             } else if cr.row > at_row {
-                CellRef::new(cr.row - 1, cr.col).to_string()
+                CellRef::new(cr.col, cr.row - 1).to_string()
             } else {
                 cr.to_string()
             }
         }
         ShiftOperation::InsertColumn(at_col) => {
             if cr.col >= at_col {
-                CellRef::new(cr.row, cr.col + 1).to_string()
+                CellRef::new(cr.col + 1, cr.row).to_string()
             } else {
                 cr.to_string()
             }
@@ -103,7 +103,7 @@ fn shift_single_ref(cell_ref_str: &str, op: ShiftOperation) -> String {
             if cr.col == at_col {
                 "#REF!".to_string()
             } else if cr.col > at_col {
-                CellRef::new(cr.row, cr.col - 1).to_string()
+                CellRef::new(cr.col - 1, cr.row).to_string()
             } else {
                 cr.to_string()
             }
@@ -187,9 +187,9 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
     out
 }
 
-/// Replace cell references like "A1" with Rhai function calls like "cell(0, 0)".
-/// Typed refs like "@A1" become "value(0, 0)" (returns Dynamic).
-/// Also transforms range functions like SUM(A1:B5, ...) into sum_range(0, 0, 4, 1, ...).
+/// Replace cell references like "A1" with Rhai function calls like "CELL(0, 0)".
+/// Typed refs like "@A1" become "VALUE(0, 0)" (returns Dynamic).
+/// Also transforms range functions like SUM(A1:B5, ...) into SUM_RANGE(0, 0, 1, 4, ...).
 pub fn preprocess_script(script: &str) -> String {
     preprocess_script_with_context(script, None)
 }
@@ -221,7 +221,8 @@ mod tests {
 }
 
 /// Preprocess script with optional current cell context for ROW()/COL().
-/// When context is provided, ROW() and COL() are replaced with 1-based row/col values.
+/// When context is provided, ROW() and COL() are replaced with 1-based row/col values (row/col ordering is unchanged).
+// NOTE: builtin coordinate order is col/row.
 pub fn preprocess_script_with_context(script: &str, context: Option<&CellRef>) -> String {
     // First, replace ROW() and COL() if context is provided
     let script = if let Some(cell_ref) = context {
@@ -256,7 +257,7 @@ fn preprocess_script_inner(script: &str) -> String {
             {
                 format!(
                     "{}({}, {}, {}, {}{})",
-                    rhai_name, start.row, start.col, end.row, end.col, rest_args
+                    rhai_name, start.col, start.row, end.col, end.row, rest_args
                 )
             } else {
                 caps[0].to_string()
@@ -276,7 +277,7 @@ fn replace_cell_refs_outside_strings(script: &str) -> String {
             .replace_all(seg, |caps: &regex::Captures| {
                 let cell_ref = format!("{}{}", &caps[1], &caps[2]);
                 if let Some(cr) = CellRef::from_str(&cell_ref) {
-                    format!("value({}, {})", cr.row, cr.col)
+                    format!("VALUE({}, {})", cr.col, cr.row)
                 } else {
                     caps[0].to_string()
                 }
@@ -287,7 +288,7 @@ fn replace_cell_refs_outside_strings(script: &str) -> String {
             .replace_all(&seg, |caps: &regex::Captures| {
                 let cell_ref = format!("{}{}", &caps[1], &caps[2]);
                 if let Some(cr) = CellRef::from_str(&cell_ref) {
-                    format!("cell({}, {})", cr.row, cr.col)
+                    format!("CELL({}, {})", cr.col, cr.row)
                 } else {
                     caps[0].to_string()
                 }

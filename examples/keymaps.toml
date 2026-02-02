@@ -1,0 +1,131 @@
+[meta]
+default = "vim"
+
+# Config paths:
+# - Linux: ~/.config/gridline/keymaps.toml
+# - macOS: ~/Library/Application Support/gridline/keymaps.toml
+# - Windows: %APPDATA%\\gridline\\keymaps.toml
+#
+# Supported key aliases:
+# - Space: Space, Spc
+# - Escape: Esc, Escape
+# - Navigation: Up, Down, Left, Right, Home, End, PageUp, PageDown
+# - Editing: Enter, Backspace, Delete, Tab
+# - Punctuation: Dash/Minus, Plus, Greater, Less, Comma, Period/Dot, Slash,
+#   Backslash, Semicolon, Quote/Apostrophe, DoubleQuote, Backtick/Grave,
+#   LBracket/LeftBracket, RBracket/RightBracket, Equal
+
+[keymaps.vim]
+description = "Vim-like bindings (built-in defaults)."
+
+[keymaps.vim.normal]
+"u" = "undo"
+"C-r" = "redo"
+"Up" = "move_up"
+"Down" = "move_down"
+"Left" = "move_left"
+"Right" = "move_right"
+"k" = "move_up"
+"j" = "move_down"
+"h" = "move_left"
+"l" = "move_right"
+"PageUp" = "page_up"
+"PageDown" = "page_down"
+"Home" = "home_col"
+"End" = "end_col"
+"Enter" = "enter_edit"
+"i" = "enter_edit"
+"x" = "clear_cell"
+"Delete" = "clear_cell"
+":" = "enter_command"
+"v" = "enter_visual"
+"y" = "yank"
+"p" = "paste"
+"P" = "open_plot"
+"+" = "inc_col_width"
+">" = "inc_col_width"
+"-" = "dec_col_width"
+"<" = "dec_col_width"
+"G" = "goto_last"
+"g" = "open_goto"
+
+[keymaps.vim.visual]
+"Esc" = "exit_visual"
+"Up" = "move_up"
+"Down" = "move_down"
+"Left" = "move_left"
+"Right" = "move_right"
+"k" = "move_up"
+"j" = "move_down"
+"h" = "move_left"
+"l" = "move_right"
+"PageUp" = "page_up"
+"PageDown" = "page_down"
+"y" = "yank"
+
+[keymaps.vim.edit]
+"Esc" = "cancel"
+"Enter" = "commit_edit"
+
+[keymaps.vim.command]
+"Esc" = "cancel"
+"Enter" = "execute_command"
+
+[keymaps.emacs]
+description = "Emacs-like bindings."
+
+[keymaps.emacs.normal]
+"C-p" = "move_up"
+"C-n" = "move_down"
+"C-b" = "move_left"
+"C-f" = "move_right"
+"Up" = "move_up"
+"Down" = "move_down"
+"Left" = "move_left"
+"Right" = "move_right"
+"C-v" = "page_down"
+"M-v" = "page_up"
+"PageDown" = "page_down"
+"PageUp" = "page_up"
+"C-a" = "home_col"
+"C-e" = "end_col"
+"Home" = "home_col"
+"End" = "end_col"
+"Enter" = "enter_edit"
+"M-x" = "enter_command"
+"M-w" = "yank"
+"C-y" = "paste"
+"C-Space" = "enter_visual"
+"C-d" = "clear_cell"
+"Delete" = "clear_cell"
+"M-p" = "open_plot"
+"M-Greater" = "goto_last"
+"M-g" = "open_goto"
+"C-g" = "cancel"
+
+[keymaps.emacs.visual]
+"C-g" = "exit_visual"
+"Esc" = "exit_visual"
+"C-p" = "move_up"
+"C-n" = "move_down"
+"C-b" = "move_left"
+"C-f" = "move_right"
+"Up" = "move_up"
+"Down" = "move_down"
+"Left" = "move_left"
+"Right" = "move_right"
+"C-v" = "page_down"
+"M-v" = "page_up"
+"PageDown" = "page_down"
+"PageUp" = "page_up"
+"M-w" = "yank"
+
+[keymaps.emacs.edit]
+"C-g" = "cancel"
+"Esc" = "cancel"
+"Enter" = "commit_edit"
+
+[keymaps.emacs.command]
+"C-g" = "cancel"
+"Esc" = "cancel"
+"Enter" = "execute_command"

@@ -31,8 +31,7 @@ fn handle_text_input(buffer: &mut String, cursor: &mut usize, key: event::KeyEve
             *cursor = buffer.len();
         }
         KeyCode::Backspace | KeyCode::Char('h')
-            if key.code == KeyCode::Backspace
-                || key.modifiers.contains(KeyModifiers::CONTROL) =>
+            if key.code == KeyCode::Backspace || key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
             if *cursor > 0 {
                 let mut del_start = *cursor - 1;

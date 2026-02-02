@@ -36,7 +36,7 @@ pub fn extract_dependencies(script: &str) -> Vec<CellRef> {
             let max_col = start.col.max(end.col);
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
-                    deps.push(CellRef::new(row, col));
+                    deps.push(CellRef::new(col, row));
                 }
             }
         }
@@ -89,7 +89,7 @@ fn strip_string_literals(script: &str) -> String {
     out
 }
 
-/// Parse a cell range like "A1:B5" and return (start_row, start_col, end_row, end_col).
+/// Parse a cell range like "A1:B5" and return (start_col, start_row, end_col, end_row).
 pub fn parse_range(range: &str) -> Option<(usize, usize, usize, usize)> {
     let parts: Vec<&str> = range.split(':').collect();
     if parts.len() != 2 {
@@ -97,5 +97,5 @@ pub fn parse_range(range: &str) -> Option<(usize, usize, usize, usize)> {
     }
     let start = CellRef::from_str(parts[0])?;
     let end = CellRef::from_str(parts[1])?;
-    Some((start.row, start.col, end.row, end.col))
+    Some((start.col, start.row, end.col, end.row))
 }

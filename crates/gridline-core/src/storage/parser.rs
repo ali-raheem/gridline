@@ -161,9 +161,9 @@ B3: =A1 + A2
 "#;
         let grid = parse_grd_content(content).unwrap();
         assert!(grid.contains_key(&CellRef::new(0, 0))); // A1
-        assert!(grid.contains_key(&CellRef::new(1, 0))); // A2
-        assert!(grid.contains_key(&CellRef::new(2, 0))); // A3
-        assert!(grid.contains_key(&CellRef::new(2, 1))); // B3
+        assert!(grid.contains_key(&CellRef::new(0, 1))); // A2
+        assert!(grid.contains_key(&CellRef::new(0, 2))); // A3
+        assert!(grid.contains_key(&CellRef::new(1, 2))); // B3
     }
 
     #[test]

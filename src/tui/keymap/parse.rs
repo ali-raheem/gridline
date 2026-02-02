@@ -25,7 +25,10 @@ struct KeymapFile {
     command: Option<HashMap<String, String>>,
 }
 
-pub fn load_keymap(requested: Option<&str>, keymap_file: Option<&PathBuf>) -> (Keymap, Vec<String>) {
+pub fn load_keymap(
+    requested: Option<&str>,
+    keymap_file: Option<&PathBuf>,
+) -> (Keymap, Vec<String>) {
     let mut warnings: Vec<String> = Vec::new();
     let config_path = keymap_file.cloned().or_else(user_keymaps_path);
     let mut file: Option<KeymapsFile> = None;
@@ -35,23 +38,14 @@ pub fn load_keymap(requested: Option<&str>, keymap_file: Option<&PathBuf>) -> (K
             match std::fs::read_to_string(path) {
                 Ok(content) => match toml::from_str::<KeymapsFile>(&content) {
                     Ok(parsed) => file = Some(parsed),
-                    Err(err) => warnings.push(format!(
-                        "Failed to parse {}: {}",
-                        path.display(),
-                        err
-                    )),
+                    Err(err) => {
+                        warnings.push(format!("Failed to parse {}: {}", path.display(), err))
+                    }
                 },
-                Err(err) => warnings.push(format!(
-                    "Failed to read {}: {}",
-                    path.display(),
-                    err
-                )),
+                Err(err) => warnings.push(format!("Failed to read {}: {}", path.display(), err)),
             }
         } else if keymap_file.is_some() {
-            warnings.push(format!(
-                "Keymap file not found: {}",
-                path.display()
-            ));
+            warnings.push(format!("Keymap file not found: {}", path.display()));
         }
     }
 
@@ -182,7 +176,10 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
     };
 
     let key = parse_key_code(key_part)?;
-    Ok(KeyCombo { code: key, modifiers: mods })
+    Ok(KeyCombo {
+        code: key,
+        modifiers: mods,
+    })
 }
 
 fn parse_modifiers(input: &str) -> Result<KeyModifiers, String> {

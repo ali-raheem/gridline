@@ -95,7 +95,7 @@ pub struct PlotData {
 impl PlotData {
     /// Extract plot data from a spec using a cell value accessor.
     ///
-    /// The `cell_value` closure takes (row, col) and returns the numeric value
+    /// The `cell_value` closure takes (col, row) and returns the numeric value
     /// at that position, or `None` if the cell is empty or non-numeric.
     pub fn from_spec<F>(spec: &PlotSpec, mut cell_value: F) -> Result<Self, String>
     where
@@ -116,8 +116,9 @@ impl PlotData {
         match spec.kind {
             PlotKind::Scatter => {
                 for r in r1..=r2 {
-                    let x = cell_value(r, c1);
-                    let y = cell_value(r, c2);
+                    let x = cell_value(c1, r);
+                    let y = cell_value(c2, r);
+
                     match (x, y) {
                         (Some(x), Some(y)) => points.push((x as f32, y as f32)),
                         _ => skipped_count += 1,
@@ -129,7 +130,7 @@ impl PlotData {
                 if r1 == r2 {
                     // Single row: iterate columns
                     for c in c1..=c2 {
-                        match cell_value(r1, c) {
+                        match cell_value(c, r1) {
                             Some(v) => ys.push(v as f32),
                             None => {
                                 ys.push(0.0);
@@ -140,7 +141,7 @@ impl PlotData {
                 } else if c1 == c2 {
                     // Single column: iterate rows
                     for r in r1..=r2 {
-                        match cell_value(r, c1) {
+                        match cell_value(c1, r) {
                             Some(v) => ys.push(v as f32),
                             None => {
                                 ys.push(0.0);
@@ -152,7 +153,7 @@ impl PlotData {
                     // Multi-row, multi-column: iterate row-major
                     for r in r1..=r2 {
                         for c in c1..=c2 {
-                            match cell_value(r, c) {
+                            match cell_value(c, r) {
                                 Some(v) => ys.push(v as f32),
                                 None => {
                                     ys.push(0.0);
@@ -171,7 +172,10 @@ impl PlotData {
         }
 
         if skipped_count > 0 {
-            warnings.push(format!("{} non-numeric cell(s) treated as 0", skipped_count));
+            warnings.push(format!(
+                "{} non-numeric cell(s) treated as 0",
+                skipped_count
+            ));
         }
 
         if points.is_empty() {

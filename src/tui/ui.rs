@@ -144,7 +144,7 @@ fn draw_grid(f: &mut Frame, app: &mut App, area: Rect) {
                 break;
             }
 
-            let cell_ref = CellRef::new(row, col);
+            let cell_ref = CellRef::new(col, row);
             let display = app.core.get_cell_display(&cell_ref);
             let display = if display.starts_with(PLOT_PREFIX) {
                 plot_placeholder(&display)
@@ -153,7 +153,7 @@ fn draw_grid(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let is_cursor = row == app.cursor_row && col == app.cursor_col;
-            let is_selected = if let Some(((r1, c1), (r2, c2))) = app.get_selection() {
+            let is_selected = if let Some(((c1, r1), (c2, r2))) = app.get_selection() {
                 row >= r1 && row <= r2 && col >= c1 && col <= c2
             } else {
                 false
@@ -280,7 +280,11 @@ fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
                 if let Some(labels) = &labels_line {
                     parts.push(labels.clone());
                 }
-                parts.push(render_textplots(&data, plot_width_points, plot_height_points));
+                parts.push(render_textplots(
+                    &data,
+                    plot_width_points,
+                    plot_height_points,
+                ));
                 if !data.warnings.is_empty() {
                     parts.push(format!("Warning: {}", data.warnings.join("; ")));
                 }
@@ -299,14 +303,14 @@ fn draw_plot_modal(f: &mut Frame, app: &mut App, spec: &PlotSpec) {
 
 /// Parse a cell as a numeric value for plotting.
 /// Returns `Some(value)` if the cell contains a valid number, `None` otherwise.
-fn cell_value_for_plot(app: &mut App, row: usize, col: usize) -> Option<f64> {
-    let s = app.core.get_cell_display(&CellRef::new(row, col));
+fn cell_value_for_plot(app: &mut App, col: usize, row: usize) -> Option<f64> {
+    let s = app.core.get_cell_display(&CellRef::new(col, row));
     s.parse::<f64>().ok()
 }
 
 /// Prepare plot data from a spec using the app's cell accessor.
 fn prepare_plot_data(app: &mut App, spec: &PlotSpec) -> Result<PlotData, String> {
-    PlotData::from_spec(spec, |r, c| cell_value_for_plot(app, r, c))
+    PlotData::from_spec(spec, |c, r| cell_value_for_plot(app, c, r))
 }
 
 /// Render plot data to a string using textplots.

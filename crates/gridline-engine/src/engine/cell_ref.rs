@@ -1,14 +1,14 @@
 //! Cell reference parsing and formatting.
 //!
 //! Provides bidirectional conversion between spreadsheet-style cell references
-//! (e.g., "A1", "B2", "AA100") and zero-indexed row/column coordinates.
+//! (e.g., "A1", "B2", "AA100") and zero-indexed column/row coordinates.
 //!
 //! # Examples
 //!
 //! ```ignore
 //! let cell = CellRef::from_str("B3").unwrap();
-//! assert_eq!(cell.row, 2);  // 0-indexed
-//! assert_eq!(cell.col, 1);
+//! assert_eq!(cell.col, 1);  // 0-indexed
+//! assert_eq!(cell.row, 2);
 //! assert_eq!(cell.to_string(), "B3");
 //! ```
 
@@ -16,7 +16,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// A reference to a cell by row and column indices (0-indexed).
+/// A reference to a cell by column and row indices (0-indexed).
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CellRef {
     pub row: usize,
@@ -24,7 +24,7 @@ pub struct CellRef {
 }
 
 impl CellRef {
-    pub fn new(row: usize, col: usize) -> CellRef {
+    pub fn new(col: usize, row: usize) -> CellRef {
         CellRef { row, col }
     }
 
@@ -49,7 +49,7 @@ impl CellRef {
 
         let row = numbers.parse::<usize>().ok()?.checked_sub(1)?;
 
-        Some(CellRef::new(row, col))
+        Some(CellRef::new(col, row))
     }
 
     /// Convert column index to spreadsheet-style letters (0 -> A, 25 -> Z, 26 -> AA).

@@ -2,7 +2,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::prelude::*;
 use std::io;
 
-use super::actions::{apply_action, handle_command_text, handle_edit_text, ApplyResult};
+use super::actions::{ApplyResult, apply_action, handle_command_text, handle_edit_text};
 use super::app::{App, Mode};
 use super::keymap::translate;
 use super::ui;

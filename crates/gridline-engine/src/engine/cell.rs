@@ -104,7 +104,9 @@ impl Cell {
     pub fn to_input_string(&self) -> String {
         match &self.contents {
             CellType::Empty => String::new(),
-            CellType::Text(s) => s.clone(),
+            // Always round-trip Text as a quoted string so UIs can fetch the
+            // current input and write it back without changing the cell type.
+            CellType::Text(s) => format!("\"{}\"", s),
             CellType::Number(n) => n.to_string(),
             CellType::Script(s) => format!("={}", s),
         }

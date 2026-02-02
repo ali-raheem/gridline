@@ -1,12 +1,31 @@
 //! Integration tests for command mode (-c/--command flag)
 
+use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn temp_path(filename: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    path.push(format!(
+        "gridline_{}_{}_{}",
+        filename,
+        std::process::id(),
+        unique
+    ));
+    path
+}
 
 fn run_command(args: &[&str]) -> (String, String, i32) {
     let output = Command::new("cargo")
         .arg("run")
         .arg("-q")
         .arg("--")
+        // Tests must be deterministic and not depend on a user's ~/.config/gridline/default.rhai.
+        .arg("--no-default-functions")
         .args(args)
         .output()
         .expect("Failed to execute command");
@@ -48,7 +67,10 @@ fn test_array_reduce() {
 
 #[test]
 fn test_complex_formula_sum_of_squares() {
-    let (stdout, _, code) = run_command(&["-c", "(0..=10).SPILL().map(|x| x*x).reduce(|x, y| x + y, 0)"]);
+    let (stdout, _, code) = run_command(&[
+        "-c",
+        "(0..=10).SPILL().map(|x| x*x).reduce(|x, y| x + y, 0)",
+    ]);
     assert_eq!(stdout.trim(), "385");
     assert_eq!(code, 0);
 }
@@ -100,51 +122,54 @@ fn test_custom_functions() {
     use std::fs;
     use std::io::Write;
 
-    let func_file = "/tmp/gridline_test_func.rhai";
-    let mut file = fs::File::create(func_file).unwrap();
+    let func_path = temp_path("gridline_test_func.rhai");
+    let mut file = fs::File::create(&func_path).unwrap();
     writeln!(file, "fn double(x) {{ x * 2 }}").unwrap();
     drop(file);
 
-    let (stdout, _, code) = run_command(&["-c", "double(21)", "-f", func_file]);
+    let func_str = func_path.to_str().unwrap();
+    let (stdout, _, code) = run_command(&["-c", "double(21)", "-f", func_str]);
     assert_eq!(stdout.trim(), "42");
     assert_eq!(code, 0);
 
-    fs::remove_file(func_file).ok();
+    fs::remove_file(func_path).ok();
 }
 
 #[test]
 fn test_markdown_output_scalar() {
     use std::fs;
 
-    let output_file = "/tmp/gridline_test_scalar.md";
+    let output_path = temp_path("gridline_test_scalar.md");
+    let output_str = output_path.to_str().unwrap();
 
-    let (_, stderr, code) = run_command(&["-c", "POW(2, 10)", "-o", output_file]);
+    let (_, stderr, code) = run_command(&["-c", "POW(2, 10)", "-o", output_str]);
     assert_eq!(code, 0);
     assert!(stderr.contains("Result written to"));
 
-    let content = fs::read_to_string(output_file).unwrap();
+    let content = fs::read_to_string(&output_path).unwrap();
     assert!(content.contains("| 1 | 1024 |"));
 
-    fs::remove_file(output_file).ok();
+    fs::remove_file(output_path).ok();
 }
 
 #[test]
 fn test_markdown_output_array() {
     use std::fs;
 
-    let output_file = "/tmp/gridline_test_array.md";
+    let output_path = temp_path("gridline_test_array.md");
+    let output_str = output_path.to_str().unwrap();
 
-    let (_, stderr, code) = run_command(&["-c", "(0..=3).SPILL()", "-o", output_file]);
+    let (_, stderr, code) = run_command(&["-c", "(0..=3).SPILL()", "-o", output_str]);
     assert_eq!(code, 0);
     assert!(stderr.contains("Result written to"));
 
-    let content = fs::read_to_string(output_file).unwrap();
+    let content = fs::read_to_string(&output_path).unwrap();
     assert!(content.contains("| 1 | 0 |"));
     assert!(content.contains("| 2 | 1 |"));
     assert!(content.contains("| 3 | 2 |"));
     assert!(content.contains("| 4 | 3 |"));
 
-    fs::remove_file(output_file).ok();
+    fs::remove_file(output_path).ok();
 }
 
 #[test]

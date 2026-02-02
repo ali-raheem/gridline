@@ -3,6 +3,8 @@
 mod eval;
 mod io;
 mod ops;
+mod script;
 mod state;
 
-pub use state::{Document, UndoAction};
+pub use script::ScriptContext;
+pub use state::{Document, UndoAction, UndoEntry};

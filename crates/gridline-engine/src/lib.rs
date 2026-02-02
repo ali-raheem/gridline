@@ -1,12 +1,12 @@
 //! gridline-engine - Spreadsheet engine + Rhai integration.
 
-pub(crate) mod builtins;
+pub mod builtins;
 pub mod engine;
 pub mod plot;
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::{*, preprocess_script_with_context};
+    use crate::engine::{preprocess_script_with_context, *};
     use dashmap::DashMap;
 
     #[test]
@@ -73,46 +73,40 @@ mod tests {
 
     #[test]
     fn test_preprocess_script_simple() {
-        assert_eq!(preprocess_script("A1"), "cell(0, 0)");
-        assert_eq!(preprocess_script("B1"), "cell(0, 1)");
-        assert_eq!(preprocess_script("A2"), "cell(1, 0)");
+        assert_eq!(preprocess_script("A1"), "CELL(0, 0)");
+        assert_eq!(preprocess_script("B1"), "CELL(1, 0)");
+        assert_eq!(preprocess_script("A2"), "CELL(0, 1)");
     }
 
     #[test]
     fn test_preprocess_script_typed_refs() {
-        assert_eq!(preprocess_script("@A1"), "value(0, 0)");
-        assert_eq!(preprocess_script("len(@B1)"), "len(value(0, 1))");
-        assert_eq!(preprocess_script("@A1 + B1"), "value(0, 0) + cell(0, 1)");
+        assert_eq!(preprocess_script("@A1"), "VALUE(0, 0)");
+        assert_eq!(preprocess_script("len(@B1)"), "len(VALUE(1, 0))");
+        assert_eq!(preprocess_script("@A1 + B1"), "VALUE(0, 0) + CELL(1, 0)");
     }
 
     #[test]
     fn test_preprocess_script_expression() {
-        assert_eq!(preprocess_script("A1 + B1"), "cell(0, 0) + cell(0, 1)");
+        assert_eq!(preprocess_script("A1 + B1"), "CELL(0, 0) + CELL(1, 0)");
         assert_eq!(
             preprocess_script("A1 * B2 + C3"),
-            "cell(0, 0) * cell(1, 1) + cell(2, 2)"
+            "CELL(0, 0) * CELL(1, 1) + CELL(2, 2)"
         );
     }
 
     #[test]
     fn test_preprocess_script_preserves_other_content() {
-        assert_eq!(preprocess_script("A1 + 10"), "cell(0, 0) + 10");
-        assert_eq!(preprocess_script("print(A1)"), "print(cell(0, 0))");
+        assert_eq!(preprocess_script("A1 + 10"), "CELL(0, 0) + 10");
+        assert_eq!(preprocess_script("print(A1)"), "print(CELL(0, 0))");
     }
 
     #[test]
     fn test_preprocess_row_col_functions() {
         // ROW() and COL() are replaced with 1-based values when context is provided
-        let cell = CellRef::new(5, 3); // Row 5, Col 3 (0-indexed) => Row 6, Col 4 (1-indexed)
+        let cell = CellRef::new(3, 5); // Col 3, Row 5 (0-indexed) => Col 4, Row 6 (1-indexed)
 
-        assert_eq!(
-            preprocess_script_with_context("ROW()", Some(&cell)),
-            "6"
-        );
-        assert_eq!(
-            preprocess_script_with_context("COL()", Some(&cell)),
-            "4"
-        );
+        assert_eq!(preprocess_script_with_context("ROW()", Some(&cell)), "6");
+        assert_eq!(preprocess_script_with_context("COL()", Some(&cell)), "4");
         assert_eq!(
             preprocess_script_with_context("ROW() + COL()", Some(&cell)),
             "6 + 4"
@@ -120,21 +114,15 @@ mod tests {
         // Works with other formula content
         assert_eq!(
             preprocess_script_with_context("A1 + ROW()", Some(&cell)),
-            "cell(0, 0) + 6"
+            "CELL(0, 0) + 6"
         );
     }
 
     #[test]
     fn test_preprocess_row_col_without_context() {
         // Without context, ROW() and COL() are left as-is
-        assert_eq!(
-            preprocess_script_with_context("ROW()", None),
-            "ROW()"
-        );
-        assert_eq!(
-            preprocess_script_with_context("COL()", None),
-            "COL()"
-        );
+        assert_eq!(preprocess_script_with_context("ROW()", None), "ROW()");
+        assert_eq!(preprocess_script_with_context("COL()", None), "COL()");
     }
 
     #[test]
@@ -155,8 +143,8 @@ mod tests {
         let deps = extract_dependencies("A1 + B1 + C2");
         assert_eq!(deps.len(), 3);
         assert_eq!(deps[0], CellRef::new(0, 0));
-        assert_eq!(deps[1], CellRef::new(0, 1));
-        assert_eq!(deps[2], CellRef::new(1, 2));
+        assert_eq!(deps[1], CellRef::new(1, 0));
+        assert_eq!(deps[2], CellRef::new(2, 1));
     }
 
     #[test]
@@ -170,9 +158,9 @@ mod tests {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
         grid.insert(CellRef::new(0, 1), Cell::new_number(20.0));
-        grid.insert(CellRef::new(0, 2), Cell::new_script("A1 + B1"));
+        grid.insert(CellRef::new(2, 0), Cell::new_script("A1 + B1"));
 
-        assert!(detect_cycle(&CellRef::new(0, 2), &grid).is_none());
+        assert!(detect_cycle(&CellRef::new(2, 0), &grid).is_none());
     }
 
     #[test]
@@ -190,7 +178,7 @@ mod tests {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("B1"));
         grid.insert(CellRef::new(0, 1), Cell::new_script("C1"));
-        grid.insert(CellRef::new(0, 2), Cell::new_script("A1"));
+        grid.insert(CellRef::new(2, 0), Cell::new_script("A1"));
 
         let cycle = detect_cycle(&CellRef::new(0, 0), &grid);
         assert!(cycle.is_some());
@@ -209,10 +197,10 @@ mod tests {
     #[test]
     fn test_parse_range() {
         let result = parse_range("A1:B5");
-        assert_eq!(result, Some((0, 0, 4, 1)));
+        assert_eq!(result, Some((0, 0, 1, 4)));
 
         let result = parse_range("B2:D10");
-        assert_eq!(result, Some((1, 1, 9, 3)));
+        assert_eq!(result, Some((1, 1, 3, 9)));
 
         let result = parse_range("A1");
         assert_eq!(result, None);
@@ -222,31 +210,38 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_range_col_row_order() {
+        let result = parse_range("B2:D3");
+        assert_eq!(result, Some((1, 1, 3, 2)));
+        assert_eq!(preprocess_script("SUM(B2:D3)"), "SUM_RANGE(1, 1, 3, 2)");
+    }
+
+    #[test]
     fn test_preprocess_script_range_functions() {
-        assert_eq!(preprocess_script("SUM(A1:B5)"), "sum_range(0, 0, 4, 1)");
-        assert_eq!(preprocess_script("AVG(A1:A10)"), "avg_range(0, 0, 9, 0)");
-        assert_eq!(preprocess_script("COUNT(B2:D5)"), "count_range(1, 1, 4, 3)");
-        assert_eq!(preprocess_script("MIN(A1:C3)"), "min_range(0, 0, 2, 2)");
-        assert_eq!(preprocess_script("MAX(A1:Z100)"), "max_range(0, 0, 99, 25)");
+        assert_eq!(preprocess_script("SUM(A1:B5)"), "SUM_RANGE(0, 0, 1, 4)");
+        assert_eq!(preprocess_script("AVG(A1:A10)"), "AVG_RANGE(0, 0, 0, 9)");
+        assert_eq!(preprocess_script("COUNT(B2:D5)"), "COUNT_RANGE(1, 1, 3, 4)");
+        assert_eq!(preprocess_script("MIN(A1:C3)"), "MIN_RANGE(0, 0, 2, 2)");
+        assert_eq!(preprocess_script("MAX(A1:Z100)"), "MAX_RANGE(0, 0, 25, 99)");
         assert_eq!(
             preprocess_script("BARCHART(A1:A10)"),
-            "barchart_range(0, 0, 9, 0)"
+            "BARCHART_RANGE(0, 0, 0, 9)"
         );
         assert_eq!(
             preprocess_script("LINECHART(A1:A10)"),
-            "linechart_range(0, 0, 9, 0)"
+            "LINECHART_RANGE(0, 0, 0, 9)"
         );
         assert_eq!(
             preprocess_script("SCATTER(A1:B10)"),
-            "scatter_range(0, 0, 9, 1)"
+            "SCATTER_RANGE(0, 0, 1, 9)"
         );
         assert_eq!(
             preprocess_script("SCATTER(A1:B10, \"My Plot\", \"X\", \"Y\")"),
-            "scatter_range(0, 0, 9, 1, \"My Plot\", \"X\", \"Y\")"
+            "SCATTER_RANGE(0, 0, 1, 9, \"My Plot\", \"X\", \"Y\")"
         );
         assert_eq!(
             preprocess_script("SCATTER(A1:B10, \"A1\", \"B2\", \"C3\")"),
-            "scatter_range(0, 0, 9, 1, \"A1\", \"B2\", \"C3\")"
+            "SCATTER_RANGE(0, 0, 1, 9, \"A1\", \"B2\", \"C3\")"
         );
     }
 
@@ -254,11 +249,11 @@ mod tests {
     fn test_preprocess_script_mixed() {
         assert_eq!(
             preprocess_script("SUM(A1:A3) + B1"),
-            "sum_range(0, 0, 2, 0) + cell(0, 1)"
+            "SUM_RANGE(0, 0, 0, 2) + CELL(1, 0)"
         );
         assert_eq!(
             preprocess_script("SUM(A1:A3) * 2 + AVG(B1:B5)"),
-            "sum_range(0, 0, 2, 0) * 2 + avg_range(0, 1, 4, 1)"
+            "SUM_RANGE(0, 0, 0, 2) * 2 + AVG_RANGE(1, 0, 1, 4)"
         );
     }
 
@@ -266,33 +261,33 @@ mod tests {
     fn test_range_functions_evaluation() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_number(10.0));
-        grid.insert(CellRef::new(1, 0), Cell::new_number(20.0));
-        grid.insert(CellRef::new(2, 0), Cell::new_number(30.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(20.0));
+        grid.insert(CellRef::new(0, 2), Cell::new_number(30.0));
 
         let engine = create_engine(grid);
 
-        let result: f64 = engine.eval("sum_range(0, 0, 2, 0)").unwrap();
+        let result: f64 = engine.eval("SUM_RANGE(0, 0, 0, 2)").unwrap();
         assert_eq!(result, 60.0);
 
-        let result: f64 = engine.eval("avg_range(0, 0, 2, 0)").unwrap();
+        let result: f64 = engine.eval("AVG_RANGE(0, 0, 0, 2)").unwrap();
         assert_eq!(result, 20.0);
 
-        let result: f64 = engine.eval("min_range(0, 0, 2, 0)").unwrap();
+        let result: f64 = engine.eval("MIN_RANGE(0, 0, 0, 2)").unwrap();
         assert_eq!(result, 10.0);
 
-        let result: f64 = engine.eval("max_range(0, 0, 2, 0)").unwrap();
+        let result: f64 = engine.eval("MAX_RANGE(0, 0, 0, 2)").unwrap();
         assert_eq!(result, 30.0);
 
-        let result: f64 = engine.eval("count_range(0, 0, 2, 0)").unwrap();
+        let result: f64 = engine.eval("COUNT_RANGE(0, 0, 0, 2)").unwrap();
         assert_eq!(result, 3.0);
     }
 
     #[test]
     fn test_typed_ref_len_over_script_string() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
-        grid.insert(CellRef::new(0, 2), Cell::new_number(150.0)); // C1
+        grid.insert(CellRef::new(2, 0), Cell::new_number(150.0)); // C1
         grid.insert(
-            CellRef::new(0, 1),
+            CellRef::new(1, 0),
             Cell::new_script("if C1 > 100 { \"expensive\" } else { \"cheap\" }"),
         ); // B1
 
@@ -307,7 +302,7 @@ mod tests {
         let deps = extract_dependencies("SUM(A1:A3)");
         assert_eq!(deps.len(), 3);
         assert!(deps.contains(&CellRef::new(0, 0)));
-        assert!(deps.contains(&CellRef::new(1, 0)));
+        assert!(deps.contains(&CellRef::new(0, 1)));
         assert!(deps.contains(&CellRef::new(2, 0)));
     }
 
@@ -319,8 +314,7 @@ mod tests {
             fn square(x) { x * x }
         "#;
 
-        let (engine, custom_ast, error) =
-            create_engine_with_functions(grid, Some(custom_script));
+        let (engine, custom_ast, error) = create_engine_with_functions(grid, Some(custom_script));
         assert!(error.is_none());
         assert!(custom_ast.is_some());
 
