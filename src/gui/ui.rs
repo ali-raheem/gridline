@@ -227,7 +227,7 @@ pub fn draw_central_grid(
 
                         for c in 0..state.viewport_cols {
                             let col = state.viewport_col + c;
-                            let cell_ref = CellRef::new(row, col);
+                            let cell_ref = CellRef::new(col, row);
                             let display = app.cell_display(&cell_ref);
 
                             let is_selected = app.selected == cell_ref;

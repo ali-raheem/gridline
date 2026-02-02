@@ -33,7 +33,7 @@ impl ClipboardProvider for SystemClipboard {
 /// In-memory clipboard for grid data.
 #[derive(Clone, Debug)]
 pub struct GridClipboard {
-    pub cells: Vec<(usize, usize, String)>, // (row, col, input_string)
+    pub cells: Vec<(usize, usize, String)>, // (col, row, input_string)
     pub width: usize,
     pub height: usize,
 }
@@ -53,8 +53,8 @@ impl GridClipboard {
         self.height = 0;
     }
 
-    pub fn add_cell(&mut self, row: usize, col: usize, text: String) {
-        self.cells.push((row, col, text));
+    pub fn add_cell(&mut self, col: usize, row: usize, text: String) {
+        self.cells.push((col, row, text));
         self.width = self.width.max(col + 1);
         self.height = self.height.max(row + 1);
     }
@@ -74,8 +74,8 @@ mod tests {
     fn test_grid_clipboard() {
         let mut clipboard = GridClipboard::new();
         clipboard.add_cell(0, 0, "A".to_string());
-        clipboard.add_cell(0, 1, "B".to_string());
-        clipboard.add_cell(1, 0, "C".to_string());
+        clipboard.add_cell(1, 0, "B".to_string());
+        clipboard.add_cell(0, 1, "C".to_string());
 
         assert_eq!(clipboard.width, 2);
         assert_eq!(clipboard.height, 2);

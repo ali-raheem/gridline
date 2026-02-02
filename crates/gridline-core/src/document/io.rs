@@ -100,10 +100,10 @@ impl Document {
         Ok(())
     }
 
-    /// Import CSV data starting at a row/column.
+    /// Import CSV data starting at a column/row.
     /// Returns the number of cells imported.
-    pub fn import_csv(&mut self, path: &str, start_row: usize, start_col: usize) -> Result<usize> {
-        let cells = parse_csv(Path::new(path), start_row, start_col)?;
+    pub fn import_csv(&mut self, path: &str, start_col: usize, start_row: usize) -> Result<usize> {
+        let cells = parse_csv(Path::new(path), start_col, start_row)?;
         let count = cells.len();
         if count == 0 {
             return Err(GridlineError::EmptyCsv);
@@ -125,8 +125,8 @@ impl Document {
     pub(crate) fn import_csv_raw(
         &mut self,
         csv_content: &str,
-        start_row: usize,
         start_col: usize,
+        start_row: usize,
     ) -> Result<usize> {
         let mut count = 0;
         for (row_idx, line) in csv_content.lines().enumerate() {
@@ -138,7 +138,7 @@ impl Document {
                     continue;
                 }
                 let cell_ref =
-                    gridline_engine::engine::CellRef::new(start_row + row_idx, start_col + col_idx);
+                    gridline_engine::engine::CellRef::new(start_col + col_idx, start_row + row_idx);
                 let cell = crate::storage::csv::parse_csv_field(&field);
                 self.grid.insert(cell_ref, cell);
                 count += 1;

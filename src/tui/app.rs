@@ -16,9 +16,10 @@ use super::keymap::Keymap;
 /// Clipboard contents for yank/paste
 #[derive(Clone)]
 pub struct Clipboard {
-    /// Cells stored as (relative_row, relative_col, cell)
+    /// Cells stored as (relative_col, relative_row, cell)
     /// Position is relative to top-left of selection
     pub cells: Vec<(usize, usize, Cell)>,
+
     /// Original selection dimensions (kept for potential future paste-repeat feature)
     #[allow(dead_code)]
     pub width: usize,
@@ -85,7 +86,7 @@ pub struct App {
     pub command_cursor: usize,
     /// Column width for display
     pub col_width: usize,
-    /// Visual mode selection anchor (where selection started)
+    /// Visual mode selection anchor (col, row)
     pub selection_anchor: Option<(usize, usize)>,
     /// Clipboard for yank/paste
     pub clipboard: Option<Clipboard>,
@@ -192,7 +193,7 @@ impl App {
 
     /// Get the current cell reference
     pub fn current_cell_ref(&self) -> CellRef {
-        CellRef::new(self.cursor_row, self.cursor_col)
+        CellRef::new(self.cursor_col, self.cursor_row)
     }
 
     /// Move cursor by delta, clamping to valid range
@@ -331,7 +332,7 @@ impl App {
 
     /// Enter visual mode, anchoring selection at current cursor
     pub fn enter_visual_mode(&mut self) {
-        self.selection_anchor = Some((self.cursor_row, self.cursor_col));
+        self.selection_anchor = Some((self.cursor_col, self.cursor_row));
         self.mode = Mode::Visual;
         self.status_message = "-- VISUAL --".to_string();
     }
@@ -345,19 +346,19 @@ impl App {
 
     /// Get current selection bounds (top_left, bottom_right) if in visual mode
     pub fn get_selection(&self) -> Option<((usize, usize), (usize, usize))> {
-        let (anchor_row, anchor_col) = self.selection_anchor?;
-        let min_row = anchor_row.min(self.cursor_row);
-        let max_row = anchor_row.max(self.cursor_row);
+        let (anchor_col, anchor_row) = self.selection_anchor?;
         let min_col = anchor_col.min(self.cursor_col);
         let max_col = anchor_col.max(self.cursor_col);
-        Some(((min_row, min_col), (max_row, max_col)))
+        let min_row = anchor_row.min(self.cursor_row);
+        let max_row = anchor_row.max(self.cursor_row);
+        Some(((min_col, min_row), (max_col, max_row)))
     }
 
     /// Get the selection as a range string like "A1:B5"
     pub fn get_selection_range_string(&self) -> Option<String> {
-        let ((r1, c1), (r2, c2)) = self.get_selection()?;
-        let start = CellRef::new(r1, c1);
-        let end = CellRef::new(r2, c2);
+        let ((c1, r1), (c2, r2)) = self.get_selection()?;
+        let start = CellRef::new(c1, r1);
+        let end = CellRef::new(c2, r2);
         Some(format!("{}:{}", start, end))
     }
 
@@ -365,14 +366,15 @@ impl App {
     pub fn yank(&mut self) {
         let mut cells = Vec::new();
 
-        if let Some(((r1, c1), (r2, c2))) = self.get_selection() {
+        if let Some(((c1, r1), (c2, r2))) = self.get_selection() {
             // Yank selection
             for row in r1..=r2 {
                 for col in c1..=c2 {
-                    let cell_ref = CellRef::new(row, col);
+                    let cell_ref = CellRef::new(col, row);
+
                     if let Some(cell) = self.core.grid.get(&cell_ref) {
                         // Normal cells: preserve original input/formula.
-                        cells.push((row - r1, col - c1, cell.clone()));
+                        cells.push((col - c1, row - r1, cell.clone()));
                     } else if self.core.spill_sources.contains_key(&cell_ref)
                         || self.core.value_cache.contains_key(&cell_ref)
                     {
@@ -380,7 +382,7 @@ impl App {
                         let display = self.core.get_cell_display(&cell_ref);
                         if !display.is_empty() {
                             let cell = gridline_engine::engine::Cell::from_input(&display);
-                            cells.push((row - r1, col - c1, cell));
+                            cells.push((col - c1, row - r1, cell));
                         }
                     }
                 }
@@ -428,9 +430,8 @@ impl App {
 
         let base_row = self.cursor_row;
         let base_col = self.cursor_col;
-        let clipboard_cells = clipboard.cells.clone();
+        let pasted = self.core.paste_cells(base_col, base_row, &clipboard.cells);
 
-        let pasted = self.core.paste_cells(base_row, base_col, &clipboard_cells);
         self.status_message = format!("Pasted {} cells", pasted);
     }
 
@@ -656,10 +657,10 @@ impl App {
     /// Execute a Rhai script with access to spreadsheet write operations.
     fn execute_rhai_script(&mut self, script: &str) {
         // Build script context with cursor position and selection
-        let context = if let Some(((r1, c1), (r2, c2))) = self.get_selection() {
-            ScriptContext::with_selection(self.cursor_row, self.cursor_col, r1, c1, r2, c2)
+        let context = if let Some(((c1, r1), (c2, r2))) = self.get_selection() {
+            ScriptContext::with_selection(self.cursor_col, self.cursor_row, c1, r1, c2, r2)
         } else {
-            ScriptContext::new(self.cursor_row, self.cursor_col)
+            ScriptContext::new(self.cursor_col, self.cursor_row)
         };
 
         match self.core.execute_script(script, &context) {
@@ -690,7 +691,7 @@ impl App {
 
     /// Import CSV data starting at current cursor position
     fn import_csv(&mut self, path: &str) {
-        match self.core.import_csv(path, self.cursor_row, self.cursor_col) {
+        match self.core.import_csv(path, self.cursor_col, self.cursor_row) {
             Ok(count) => self.status_message = format!("Imported {} cells from {}", count, path),
             Err(e) => self.status_message = format!("Error: {}", e),
         }
@@ -722,4 +723,43 @@ fn parse_column_letter(s: &str) -> Option<usize> {
         .fold(0usize, |acc, c| acc * 26 + (c - b'A') as usize + 1)
         - 1;
     Some(col)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gridline_engine::engine::CellType;
+
+    #[test]
+    fn test_get_selection_col_row_order() {
+        let mut app = App::new();
+        app.cursor_col = 3;
+        app.cursor_row = 4;
+        app.selection_anchor = Some((1, 1));
+
+        let selection = app.get_selection().unwrap();
+        assert_eq!(selection, ((1, 1), (3, 4)));
+        assert_eq!(app.get_selection_range_string().unwrap(), "B2:D5");
+    }
+
+    #[test]
+    fn test_paste_uses_col_row_coordinates() {
+        let mut app = App::new();
+        app.core
+            .set_cell_from_input(CellRef::new(1, 2), "42")
+            .unwrap();
+        app.cursor_col = 1;
+        app.cursor_row = 2;
+        app.yank();
+
+        app.cursor_col = 3;
+        app.cursor_row = 0;
+        app.paste();
+
+        let cell = app.core.grid.get(&CellRef::new(3, 0)).unwrap();
+        assert!(matches!(
+            cell.contents,
+            CellType::Number(n) if (n - 42.0).abs() < 0.001
+        ));
+    }
 }

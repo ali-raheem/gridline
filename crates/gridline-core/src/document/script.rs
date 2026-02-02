@@ -13,23 +13,24 @@ use std::sync::{Arc, Mutex};
 /// Context information injected into scripts before execution.
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
-    /// Current cursor row (0-indexed)
-    pub cursor_row: usize,
     /// Current cursor column (0-indexed)
     pub cursor_col: usize,
+    /// Current cursor row (0-indexed)
+    pub cursor_row: usize,
+
     /// Whether visual selection is active
     pub has_selection: bool,
     /// Selection bounds (if has_selection is true)
-    /// (top_row, left_col, bottom_row, right_col) - all 0-indexed
+    /// (left_col, top_row, right_col, bottom_row) - all 0-indexed
     pub selection: Option<(usize, usize, usize, usize)>,
 }
 
 impl ScriptContext {
     /// Create a new script context with no selection.
-    pub fn new(cursor_row: usize, cursor_col: usize) -> Self {
+    pub fn new(cursor_col: usize, cursor_row: usize) -> Self {
         ScriptContext {
-            cursor_row,
             cursor_col,
+            cursor_row,
             has_selection: false,
             selection: None,
         }
@@ -37,37 +38,38 @@ impl ScriptContext {
 
     /// Create a new script context with selection.
     pub fn with_selection(
-        cursor_row: usize,
         cursor_col: usize,
-        sel_r1: usize,
+        cursor_row: usize,
         sel_c1: usize,
-        sel_r2: usize,
+        sel_r1: usize,
         sel_c2: usize,
+        sel_r2: usize,
     ) -> Self {
         ScriptContext {
-            cursor_row,
             cursor_col,
+            cursor_row,
             has_selection: true,
-            selection: Some((sel_r1, sel_c1, sel_r2, sel_c2)),
+            selection: Some((sel_c1, sel_r1, sel_c2, sel_r2)),
         }
     }
 
     /// Generate the Rhai variable declarations to inject before the script.
     fn to_rhai_declarations(&self) -> String {
         let mut decls = format!(
-            "let CURSOR_ROW = {}; let CURSOR_COL = {};\n",
-            self.cursor_row, self.cursor_col
+            "let CURSOR_COL = {}; let CURSOR_ROW = {};\n",
+            self.cursor_col, self.cursor_row
         );
+
         decls.push_str(&format!("let HAS_SELECTION = {};\n", self.has_selection));
 
-        if let Some((r1, c1, r2, c2)) = self.selection {
+        if let Some((c1, r1, c2, r2)) = self.selection {
             decls.push_str(&format!(
-                "let SEL_R1 = {}; let SEL_C1 = {}; let SEL_R2 = {}; let SEL_C2 = {};\n",
-                r1, c1, r2, c2
+                "let SEL_C1 = {}; let SEL_R1 = {}; let SEL_C2 = {}; let SEL_R2 = {};\n",
+                c1, r1, c2, r2
             ));
         } else {
             // Provide default values even when no selection (prevents undefined variable errors)
-            decls.push_str("let SEL_R1 = 0; let SEL_C1 = 0; let SEL_R2 = 0; let SEL_C2 = 0;\n");
+            decls.push_str("let SEL_C1 = 0; let SEL_R1 = 0; let SEL_C2 = 0; let SEL_R2 = 0;\n");
         }
 
         decls
@@ -206,20 +208,21 @@ mod tests {
     fn test_script_context_declarations() {
         let ctx = ScriptContext::new(5, 3);
         let decls = ctx.to_rhai_declarations();
-        assert!(decls.contains("let CURSOR_ROW = 5"));
-        assert!(decls.contains("let CURSOR_COL = 3"));
+        assert!(decls.contains("let CURSOR_COL = 5"));
+        assert!(decls.contains("let CURSOR_ROW = 3"));
+
         assert!(decls.contains("let HAS_SELECTION = false"));
     }
 
     #[test]
     fn test_script_context_with_selection() {
-        let ctx = ScriptContext::with_selection(5, 3, 2, 1, 10, 5);
+        let ctx = ScriptContext::with_selection(5, 3, 1, 2, 5, 10);
         let decls = ctx.to_rhai_declarations();
         assert!(decls.contains("let HAS_SELECTION = true"));
-        assert!(decls.contains("let SEL_R1 = 2"));
         assert!(decls.contains("let SEL_C1 = 1"));
-        assert!(decls.contains("let SEL_R2 = 10"));
+        assert!(decls.contains("let SEL_R1 = 2"));
         assert!(decls.contains("let SEL_C2 = 5"));
+        assert!(decls.contains("let SEL_R2 = 10"));
     }
 
     #[test]
@@ -248,7 +251,7 @@ mod tests {
             .unwrap();
         assert_eq!(result.cells_modified, 1);
 
-        // Verify cell was set at B2 (row 1, col 1)
+        // Verify cell was set at B2 (col 1, row 1)
         let cell = doc.grid.get(&CellRef::new(1, 1)).unwrap();
         assert!(matches!(
             &cell.contents,
@@ -265,8 +268,8 @@ mod tests {
         doc.execute_script(
             r#"
             SET_CELL(0, 0, 1);
-            SET_CELL(0, 1, 2);
-            SET_CELL(0, 2, 3);
+            SET_CELL(1, 0, 2);
+            SET_CELL(2, 0, 3);
             "#,
             &ctx,
         )
@@ -274,27 +277,27 @@ mod tests {
 
         // Verify all cells were set
         assert!(doc.grid.get(&CellRef::new(0, 0)).is_some());
-        assert!(doc.grid.get(&CellRef::new(0, 1)).is_some());
-        assert!(doc.grid.get(&CellRef::new(0, 2)).is_some());
+        assert!(doc.grid.get(&CellRef::new(1, 0)).is_some());
+        assert!(doc.grid.get(&CellRef::new(2, 0)).is_some());
 
         // Undo should revert all three
         doc.undo().unwrap();
         assert!(doc.grid.get(&CellRef::new(0, 0)).is_none());
-        assert!(doc.grid.get(&CellRef::new(0, 1)).is_none());
-        assert!(doc.grid.get(&CellRef::new(0, 2)).is_none());
+        assert!(doc.grid.get(&CellRef::new(1, 0)).is_none());
+        assert!(doc.grid.get(&CellRef::new(2, 0)).is_none());
     }
 
     #[test]
     fn test_execute_script_with_context() {
         let mut doc = Document::new();
-        let ctx = ScriptContext::with_selection(0, 0, 0, 0, 2, 0);
+        let ctx = ScriptContext::with_selection(0, 0, 0, 0, 0, 2);
 
         // Fill selection using context variables
         doc.execute_script(
             r#"
             for r in SEL_R1..=SEL_R2 {
                 for c in SEL_C1..=SEL_C2 {
-                    SET_CELL(r, c, r + 1);
+                    SET_CELL(c, r, r + 1);
                 }
             }
             "#,
@@ -306,6 +309,7 @@ mod tests {
         let cell0 = doc.grid.get(&CellRef::new(0, 0)).unwrap();
         let cell1 = doc.grid.get(&CellRef::new(1, 0)).unwrap();
         let cell2 = doc.grid.get(&CellRef::new(2, 0)).unwrap();
+
         assert!(
             matches!(cell0.contents, gridline_engine::engine::CellType::Number(n) if (n - 1.0).abs() < 0.001)
         );

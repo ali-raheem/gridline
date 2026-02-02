@@ -126,22 +126,22 @@ impl GridlineGuiApp {
                 self.app.status = "✓ Cleared".to_string();
             }
             Action::DeleteRow => {
-                let (r1, _, _, _) = self.app.selection_bounds();
+                let (_, r1, _, _) = self.app.selection_bounds();
                 self.app.delete_row(r1);
                 self.app.status = format!("✓ Deleted row {}", r1 + 1);
             }
             Action::DeleteColumn => {
-                let (_, c1, _, _) = self.app.selection_bounds();
+                let (c1, _, _, _) = self.app.selection_bounds();
                 self.app.delete_column(c1);
                 self.app.status = format!("✓ Deleted column {}", CellRef::col_to_letters(c1));
             }
             Action::InsertRow => {
-                let (r1, _, _, _) = self.app.selection_bounds();
+                let (_, r1, _, _) = self.app.selection_bounds();
                 self.app.insert_row(r1);
                 self.app.status = format!("✓ Inserted row at {}", r1 + 1);
             }
             Action::InsertColumn => {
-                let (_, c1, _, _) = self.app.selection_bounds();
+                let (c1, _, _, _) = self.app.selection_bounds();
                 self.app.insert_column(c1);
                 self.app.status = format!("✓ Inserted column at {}", CellRef::col_to_letters(c1));
             }

@@ -63,15 +63,15 @@ impl GuiState {
 
     /// Calculate selection bounds from anchor and end points.
     pub fn selection_bounds(anchor: &CellRef, end: &CellRef) -> (usize, usize, usize, usize) {
-        let r1 = anchor.row.min(end.row);
         let c1 = anchor.col.min(end.col);
-        let r2 = anchor.row.max(end.row);
+        let r1 = anchor.row.min(end.row);
         let c2 = anchor.col.max(end.col);
-        (r1, c1, r2, c2)
+        let r2 = anchor.row.max(end.row);
+        (c1, r1, c2, r2)
     }
 
-    /// Check if a cell is within bounds (r1, c1) to (r2, c2).
-    pub fn is_in_bounds(cell: &CellRef, r1: usize, c1: usize, r2: usize, c2: usize) -> bool {
+    /// Check if a cell is within bounds (c1, r1) to (c2, r2).
+    pub fn is_in_bounds(cell: &CellRef, c1: usize, r1: usize, c2: usize, r2: usize) -> bool {
         cell.row >= r1 && cell.row <= r2 && cell.col >= c1 && cell.col <= c2
     }
 }

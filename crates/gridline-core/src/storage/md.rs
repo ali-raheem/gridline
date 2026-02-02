@@ -46,7 +46,7 @@ pub fn write_markdown(path: &Path, doc: &mut Document) -> std::io::Result<()> {
         write!(file, "| {} |", row + 1)?; // 1-based row numbers
 
         for col in min_col..=max_col {
-            let cell_ref = CellRef::new(row, col);
+            let cell_ref = CellRef::new(col, row);
             let display = doc.get_cell_display(&cell_ref);
 
             // Check if this is a plot cell
@@ -78,7 +78,7 @@ pub fn write_markdown(path: &Path, doc: &mut Document) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Find the bounds of the grid (min/max row/col)
+/// Find the bounds of the grid (min/max row/col indices)
 fn find_grid_bounds(doc: &Document) -> (usize, usize, usize, usize) {
     let mut min_row = usize::MAX;
     let mut min_col = usize::MAX;
@@ -118,8 +118,9 @@ fn render_plot_ascii<W: Write>(
     doc: &mut Document,
 ) -> std::io::Result<()> {
     // Create cell value accessor
-    let cell_value = |row: usize, col: usize| -> Option<f64> {
-        let cell_ref = CellRef::new(row, col);
+    let cell_value = |col: usize, row: usize| -> Option<f64> {
+        let cell_ref = CellRef::new(col, row);
+
         let display = doc.get_cell_display(&cell_ref);
         display.parse::<f64>().ok()
     };

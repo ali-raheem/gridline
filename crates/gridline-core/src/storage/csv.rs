@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 /// Parse a CSV file into cells, starting at the given offset
-pub fn parse_csv(path: &Path, start_row: usize, start_col: usize) -> Result<Vec<(CellRef, Cell)>> {
+pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<(CellRef, Cell)>> {
     let content = std::fs::read_to_string(path)?;
     let mut cells = Vec::new();
 
@@ -15,7 +15,7 @@ pub fn parse_csv(path: &Path, start_row: usize, start_col: usize) -> Result<Vec<
             if field.is_empty() {
                 continue;
             }
-            let cell_ref = CellRef::new(start_row + row_idx, start_col + col_idx);
+            let cell_ref = CellRef::new(start_col + col_idx, start_row + row_idx);
             let cell = parse_csv_field(&field);
             cells.push((cell_ref, cell));
         }
@@ -98,7 +98,7 @@ pub fn write_csv(
     grid: &Grid,
     range: Option<((usize, usize), (usize, usize))>,
 ) -> Result<()> {
-    let (min_row, min_col, max_row, max_col) = if let Some(((r1, c1), (r2, c2))) = range {
+    let (min_row, min_col, max_row, max_col) = if let Some(((c1, r1), (c2, r2))) = range {
         (r1, c1, r2, c2)
     } else {
         // Auto-detect bounds from data
@@ -128,7 +128,7 @@ pub fn write_csv(
     for row in min_row..=max_row {
         let mut row_fields = Vec::new();
         for col in min_col..=max_col {
-            let cell_ref = CellRef::new(row, col);
+            let cell_ref = CellRef::new(col, row);
             let value = if let Some(cell) = grid.get(&cell_ref) {
                 cell_display_value(&cell)
             } else {
@@ -232,15 +232,17 @@ mod tests {
     fn test_import_csv_invalidates_dependents() {
         let mut core = Document::new();
         core.set_cell_from_input(CellRef::new(0, 0), "1").unwrap(); // A1
-        core.set_cell_from_input(CellRef::new(0, 1), "=A1 + 1")
+        core.set_cell_from_input(CellRef::new(1, 0), "=A1 + 1")
             .unwrap(); // B1
 
-        let display_before = core.get_cell_display(&CellRef::new(0, 1));
+        let display_before = core.get_cell_display(&CellRef::new(1, 0));
+
         assert_eq!(display_before, "2");
 
         core.import_csv_raw("5", 0, 0).unwrap(); // overwrite A1
 
-        let display_after = core.get_cell_display(&CellRef::new(0, 1));
+        let display_after = core.get_cell_display(&CellRef::new(1, 0));
+
         assert_eq!(display_after, "6");
     }
 }

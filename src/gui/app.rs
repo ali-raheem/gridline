@@ -56,26 +56,26 @@ impl GuiApp {
 
     /// Calculate selection bounds from anchor and end.
     pub fn selection_bounds(&self) -> (usize, usize, usize, usize) {
-        let r1 = self.selection_anchor.row.min(self.selection_end.row);
         let c1 = self.selection_anchor.col.min(self.selection_end.col);
-        let r2 = self.selection_anchor.row.max(self.selection_end.row);
+        let r1 = self.selection_anchor.row.min(self.selection_end.row);
         let c2 = self.selection_anchor.col.max(self.selection_end.col);
-        (r1, c1, r2, c2)
+        let r2 = self.selection_anchor.row.max(self.selection_end.row);
+        (c1, r1, c2, r2)
     }
 
     /// Human-readable label for current selection (e.g., "A1" or "A1:B5").
     pub fn selection_label(&self) -> String {
-        let (r1, c1, r2, c2) = self.selection_bounds();
+        let (c1, r1, c2, r2) = self.selection_bounds();
         if r1 == r2 && c1 == c2 {
-            format!("{}", CellRef::new(r1, c1))
+            format!("{}", CellRef::new(c1, r1))
         } else {
-            format!("{}:{}", CellRef::new(r1, c1), CellRef::new(r2, c2))
+            format!("{}:{}", CellRef::new(c1, r1), CellRef::new(c2, r2))
         }
     }
 
     /// Check if a cell is within the current selection.
     pub fn in_selection(&self, cell: &CellRef) -> bool {
-        let (r1, c1, r2, c2) = self.selection_bounds();
+        let (c1, r1, c2, r2) = self.selection_bounds();
         cell.row >= r1 && cell.row <= r2 && cell.col >= c1 && cell.col <= c2
     }
 
@@ -96,7 +96,7 @@ impl GuiApp {
         let r = self.selected.row as isize + dy;
         let c = self.selected.col as isize + dx;
         self.set_selected(
-            CellRef::new(r.max(0) as usize, c.max(0) as usize),
+            CellRef::new(c.max(0) as usize, r.max(0) as usize),
             extend_selection,
         );
     }
@@ -118,10 +118,10 @@ impl GuiApp {
 
     /// Clear all cells in current selection.
     pub fn clear_selection(&mut self) {
-        let (r1, c1, r2, c2) = self.selection_bounds();
+        let (c1, r1, c2, r2) = self.selection_bounds();
         for r in r1..=r2 {
             for c in c1..=c2 {
-                self.doc.clear_cell(&CellRef::new(r, c));
+                self.doc.clear_cell(&CellRef::new(c, r));
             }
         }
         self.sync_edit_buffer();
@@ -158,7 +158,7 @@ impl GuiApp {
             return;
         }
 
-        let (r1, c1, r2, c2) = self.selection_bounds();
+        let (c1, r1, c2, r2) = self.selection_bounds();
         let sel_rows = r2 - r1 + 1;
         let sel_cols = c2 - c1 + 1;
 
@@ -167,7 +167,7 @@ impl GuiApp {
             let v = grid[0][0].clone();
             for r in r1..=r2 {
                 for c in c1..=c2 {
-                    let _ = self.doc.set_cell_from_input(CellRef::new(r, c), &v);
+                    let _ = self.doc.set_cell_from_input(CellRef::new(c, r), &v);
                 }
             }
             self.sync_edit_buffer();
@@ -179,7 +179,7 @@ impl GuiApp {
             for (dc, v) in row.iter().enumerate() {
                 let r = r1 + dr;
                 let c = c1 + dc;
-                let _ = self.doc.set_cell_from_input(CellRef::new(r, c), v);
+                let _ = self.doc.set_cell_from_input(CellRef::new(c, r), v);
             }
         }
         self.sync_edit_buffer();
@@ -188,7 +188,7 @@ impl GuiApp {
 
     /// Copy current selection to string format (tab/newline delimited).
     pub fn copy_selection_to_string(&self) -> String {
-        let (r1, c1, r2, c2) = self.selection_bounds();
+        let (c1, r1, c2, r2) = self.selection_bounds();
         let mut out = String::new();
         for r in r1..=r2 {
             if r != r1 {
@@ -198,7 +198,7 @@ impl GuiApp {
                 if c != c1 {
                     out.push('\t');
                 }
-                out.push_str(&self.cell_input_string(&CellRef::new(r, c)));
+                out.push_str(&self.cell_input_string(&CellRef::new(c, r)));
             }
         }
         out
@@ -276,5 +276,21 @@ impl GuiApp {
                 Err(err_msg)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_selection_bounds_and_label_order() {
+        let doc = Document::new();
+        let mut app = GuiApp::new(doc);
+        app.selection_anchor = CellRef::new(2, 1);
+        app.selection_end = CellRef::new(4, 3);
+
+        assert_eq!(app.selection_bounds(), (2, 1, 4, 3));
+        assert_eq!(app.selection_label(), "C2:E4");
     }
 }

@@ -51,7 +51,8 @@ fn run_command_mode(
         format!("={}", formula)
     };
 
-    let cell_ref = CellRef::new(0, 0);
+    let cell_ref = CellRef::new(0, 0); // col, row
+
     doc.set_cell_from_input(cell_ref.clone(), &formula_with_eq)?;
 
     // Evaluate and get result
@@ -95,7 +96,8 @@ fn print_command_result(result: &str, cell_ref: &CellRef, doc: &mut Document) {
         // Print each spilled cell
         let mut row = cell_ref.row + 1;
         loop {
-            let spill_ref = CellRef::new(row, cell_ref.col);
+            let spill_ref = CellRef::new(cell_ref.col, row);
+
             if let Some(src) = doc.spill_sources.get(&spill_ref) {
                 if src == cell_ref {
                     println!("{}", doc.get_cell_display(&spill_ref));

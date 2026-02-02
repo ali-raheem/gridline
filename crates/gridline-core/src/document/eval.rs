@@ -90,7 +90,7 @@ impl Document {
 
         // Check for conflicts in spill range
         for i in 1..array.len() {
-            let spill_ref = CellRef::new(source.row + i, source.col);
+            let spill_ref = CellRef::new(source.col, source.row + i);
 
             // Compute conflicts in a narrow scope so we can mutate after.
             let (has_cell_conflict, has_spill_conflict) = {
@@ -117,7 +117,8 @@ impl Document {
         // Store all array values in the shared value_cache
         // This makes them accessible to the engine for chained VEC calls
         for (i, val) in array.iter().enumerate() {
-            let cell_ref = CellRef::new(source.row + i, source.col);
+            let cell_ref = CellRef::new(source.col, source.row + i);
+
             self.value_cache.insert(cell_ref.clone(), val.clone());
 
             // Register spill cells (skip index 0, that's the source cell)

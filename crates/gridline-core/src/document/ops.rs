@@ -21,8 +21,8 @@ impl Dimension {
     /// Create a new CellRef with modified coordinate in this dimension
     fn new_cell_ref(&self, cell_ref: &CellRef, new_coord: usize) -> CellRef {
         match self {
-            Dimension::Row => CellRef::new(new_coord, cell_ref.col),
-            Dimension::Column => CellRef::new(cell_ref.row, new_coord),
+            Dimension::Row => CellRef::new(cell_ref.col, new_coord),
+            Dimension::Column => CellRef::new(new_coord, cell_ref.row),
         }
     }
 }
@@ -450,16 +450,17 @@ impl Document {
         Ok(())
     }
 
-    /// Paste cells at a base row/column, recording undo and dependencies.
+    /// Paste cells at a base column/row, recording undo and dependencies.
     pub fn paste_cells(
         &mut self,
-        base_row: usize,
         base_col: usize,
+        base_row: usize,
         clipboard_cells: &[(usize, usize, Cell)],
     ) -> usize {
         let mut pasted_cells = Vec::new();
-        for (rel_row, rel_col, cell) in clipboard_cells {
-            let target = CellRef::new(base_row + rel_row, base_col + rel_col);
+        for (rel_col, rel_row, cell) in clipboard_cells {
+            let target = CellRef::new(base_col + rel_col, base_row + rel_row);
+
             self.push_undo(target.clone(), Some(cell.clone()));
             self.grid.insert(target.clone(), cell.clone());
             pasted_cells.push(target);
@@ -491,15 +492,15 @@ mod tests {
     #[test]
     fn test_delete_column_clears_spill_state() {
         let mut core = Document::new();
-        core.set_cell_from_input(CellRef::new(0, 1), "1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(1, 0), "1").unwrap(); // B1
         core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
-        core.set_cell_from_input(CellRef::new(2, 1), "3").unwrap(); // B3
+        core.set_cell_from_input(CellRef::new(1, 2), "3").unwrap(); // B3
         core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
             .unwrap(); // A1
 
         let _ = core.get_cell_display(&CellRef::new(0, 0));
-        assert!(core.value_cache.contains_key(&CellRef::new(1, 0)));
-        assert!(core.spill_sources.contains_key(&CellRef::new(1, 0)));
+        assert!(core.value_cache.contains_key(&CellRef::new(0, 1)));
+        assert!(core.spill_sources.contains_key(&CellRef::new(0, 1)));
 
         core.delete_column(1);
         assert!(core.value_cache.is_empty());
@@ -509,14 +510,14 @@ mod tests {
     #[test]
     fn test_spill_conflict_clears_stale_spill() {
         let mut core = Document::new();
-        core.set_cell_from_input(CellRef::new(0, 1), "1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(1, 0), "1").unwrap(); // B1
         core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
-        core.set_cell_from_input(CellRef::new(2, 1), "3").unwrap(); // B3
+        core.set_cell_from_input(CellRef::new(1, 2), "3").unwrap(); // B3
         core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
             .unwrap(); // A1
 
         let _ = core.get_cell_display(&CellRef::new(0, 0));
-        let spill_cell = CellRef::new(1, 0); // A2
+        let spill_cell = CellRef::new(0, 1); // A2
         assert!(core.spill_sources.contains_key(&spill_cell));
         assert!(core.value_cache.contains_key(&spill_cell));
 

@@ -116,6 +116,7 @@ pub fn handle_keyboard_input(ctx: &egui::Context) -> Option<Action> {
     }
 
     // Insert row/col: Alt++
+    // Coordinate order is col/row elsewhere.
     let alt_plus = ctx.input_mut(|i| i.consume_key(Modifiers::ALT, Key::Plus));
     if alt_plus {
         return Some(Action::InsertRow);

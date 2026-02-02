@@ -108,7 +108,7 @@ pub fn apply_action(app: &mut GuiApp, state: &mut GuiState, action: Action) {
         }
 
         Action::DeleteRow => {
-            let (r1, _, _, _) = app.selection_bounds();
+            let (_, r1, _, _) = app.selection_bounds();
             if r1 == app.selection_end.row {
                 // Single row selected
                 app.delete_row(r1);
@@ -118,7 +118,7 @@ pub fn apply_action(app: &mut GuiApp, state: &mut GuiState, action: Action) {
         }
 
         Action::DeleteColumn => {
-            let (_, c1, _, c2) = app.selection_bounds();
+            let (c1, _, c2, _) = app.selection_bounds();
             if c1 == c2 {
                 // Single column selected
                 app.delete_column(c1);
@@ -128,12 +128,12 @@ pub fn apply_action(app: &mut GuiApp, state: &mut GuiState, action: Action) {
         }
 
         Action::InsertRow => {
-            let (r1, _, _, _) = app.selection_bounds();
+            let (_, r1, _, _) = app.selection_bounds();
             app.insert_row(r1);
         }
 
         Action::InsertColumn => {
-            let (_, c1, _, _) = app.selection_bounds();
+            let (c1, _, _, _) = app.selection_bounds();
             app.insert_column(c1);
         }
 
