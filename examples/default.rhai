@@ -1,6 +1,6 @@
 // Example custom functions for Gridline
-// Load with: gridline -f examples/functions.rhai
-// Or at runtime: :source examples/functions.rhai
+// Load with: gridline -f examples/default.rhai
+// Or at runtime: :source examples/default.rhai
 //
 // Built-in functions (ALLCAPS):
 //   SUM, AVG, COUNT, MIN, MAX  - range aggregations
@@ -38,7 +38,10 @@ fn affine(v, mini, maxi, mino, maxo) {
     let out_min = mino.to_float();
     let out_max = maxo.to_float();
 
-    let t = (v - in_min) / (in_max - in_min);
+    let denom = in_max - in_min;
+    if denom == 0.0 { return out_min; }
+
+    let t = (v - in_min) / denom;
 
     out_min + (t * (out_max - out_min))
 }
@@ -49,10 +52,14 @@ fn pmt(rate, periods, principal) {
     // rate = periodic interest rate (e.g., annual_rate/12 for monthly)
     // periods = total number of payments
     // principal = loan amount (present value)
-    if rate == 0 {
+    if periods == 0 {
+        0.0
+    } else if rate == 0 {
         principal / periods
     } else {
-        principal * rate * POW(1 + rate, periods) / (POW(1 + rate, periods) - 1)
+        let pow = POW(1 + rate, periods);
+        let denom = pow - 1;
+        if denom == 0.0 { 0.0 } else { principal * rate * pow / denom }
     }
 }
 
@@ -86,7 +93,13 @@ fn miles_to_km(miles) { miles * 1.60934 }
 // Rounding functions
 fn round_to(x, decimals) {
     let factor = POW(10.0, decimals);
-    (x * factor + 0.5).floor() / factor
+    let scaled = x * factor;
+    let rounded = if scaled >= 0.0 {
+        (scaled + 0.5).floor()
+    } else {
+        -((-scaled) + 0.5).floor()
+    };
+    rounded / factor
 }
 
 // ============================================================================
@@ -222,6 +235,7 @@ fn reverse(arr) {
 fn take(arr, n) {
     // First n elements
     let result = [];
+    if n <= 0 { return result; }
     let count = if n < arr.len() { n } else { arr.len() };
     for i in 0..count {
         result.push(arr[i]);
@@ -232,6 +246,7 @@ fn take(arr, n) {
 fn skip(arr, n) {
     // Skip first n elements
     let result = [];
+    if n <= 0 { return arr; }
     let start = if n > arr.len() { arr.len() } else { n };
     for i in start..arr.len() {
         result.push(arr[i]);
@@ -316,22 +331,26 @@ fn concat_arr(arr, sep) {
 
 fn left(s, n) {
     // First n characters
+    if n <= 0 { return ""; }
     s.sub_string(0, n)
 }
 
 fn right(s, n) {
     // Last n characters
     let len = s.len();
+    if n <= 0 { return ""; }
     if n >= len { s } else { s.sub_string(len - n) }
 }
 
 fn mid(s, start, len) {
     // Substring from start with length
+    if start < 0 || len <= 0 { return ""; }
     s.sub_string(start, len)
 }
 
 fn pad_left(s, n, ch) {
     // Left pad to n chars with ch
+    if n <= 0 { return s; }
     let result = s;
     while result.len() < n {
         result = ch + result;
@@ -341,6 +360,7 @@ fn pad_left(s, n, ch) {
 
 fn pad_right(s, n, ch) {
     // Right pad to n chars with ch
+    if n <= 0 { return s; }
     let result = s;
     while result.len() < n {
         result += ch;
@@ -350,6 +370,7 @@ fn pad_right(s, n, ch) {
 
 fn repeat_str(s, n) {
     // Repeat string n times
+    if n <= 0 { return ""; }
     let result = "";
     for i in 0..n {
         result += s;
@@ -481,8 +502,9 @@ fn none(arr) {
 }
 
 fn coalesce(a, b) {
-    // Return a if truthy, else b
-    if a { a } else { b }
+    // Return a if present, else b.
+    // Uses unit `()` as the "missing" sentinel.
+    if type_of(a) == "()" { b } else { a }
 }
 
 // ============================================================================
@@ -492,26 +514,49 @@ fn coalesce(a, b) {
 fn format_currency(n, decimals) {
     // Round to specified decimals: 1234.567 -> "1234.57"
     let factor = POW(10.0, decimals);
-    let rounded = ((n * factor) + 0.5).floor() / factor;
+    let scaled = n * factor;
+    let rounded = if scaled >= 0.0 {
+        (scaled + 0.5).floor()
+    } else {
+        -((-scaled) + 0.5).floor()
+    } / factor;
     `${rounded}`
 }
 
 fn add_commas(s) {
-    // Add thousand separators to a number string
+    // Add thousand separators to a number string.
+    // Handles an optional leading '-' and an optional decimal part.
+    if s.len() <= 3 { return s; }
+
+    let sign = if s.starts_with("-") { "-" } else { "" };
+    let raw = if sign == "-" { s.sub_string(1, s.len() - 1) } else { s };
+    let parts = raw.split(".");
+    let int_part = parts[0];
+    let frac_part = if parts.len() > 1 { parts[1] } else { "" };
+
     let result = "";
-    let len = s.len();
+    let len = int_part.len();
     for i in 0..len {
-        let pos = len - i;
-        if i > 0 && pos % 3 == 0 { result += ","; }
-        result += s.sub_string(i, 1);
+        if i > 0 && (len - i) % 3 == 0 { result += ","; }
+        result += int_part.sub_string(i, 1);
     }
-    result
+
+    if frac_part.len() > 0 {
+        sign + result + "." + frac_part
+    } else {
+        sign + result
+    }
 }
 
 fn format_pct(n, decimals) {
     // Format as percentage: 0.123 -> "12.3%"
     let factor = POW(10.0, decimals);
-    let val = ((n * 100 * factor) + 0.5).floor() / factor;
+    let scaled = n * 100 * factor;
+    let val = if scaled >= 0.0 {
+        (scaled + 0.5).floor()
+    } else {
+        -((-scaled) + 0.5).floor()
+    } / factor;
     `${val}%`
 }
 
@@ -520,3 +565,111 @@ fn format_percent(n, decimals) {
     format_pct(n, decimals)
 }
 
+// ============================================================================
+// Spreadsheet Functions
+// ============================================================================
+
+// These functions are intended for :rhai / :call scripts.
+// Direction codes: 0=down, 1=right, 2=up, 3=left.
+
+fn seq_write_at(col, row, dir, start, end, step) {
+    if step == 0 { return (); }
+
+    let delta = if dir == 0 {
+        [0, 1]
+    } else if dir == 1 {
+        [1, 0]
+    } else if dir == 2 {
+        [0, -1]
+    } else if dir == 3 {
+        [-1, 0]
+    } else {
+        return ();
+    };
+
+    let col = col.to_int();
+    let row = row.to_int();
+    let dc = delta[0];
+    let dr = delta[1];
+
+    let i = start;
+    let steps = 0;
+    let max_steps = 100000;
+
+    if step > 0 {
+        if start > end { return (); }
+        while i <= end {
+            if col < 0 || row < 0 { return (); }
+            SET_CELL(col, row, i);
+            i += step;
+            col += dc;
+            row += dr;
+            steps += 1;
+            if steps >= max_steps { return (); }
+        }
+    } else {
+        if start < end { return (); }
+        while i >= end {
+            if col < 0 || row < 0 { return (); }
+            SET_CELL(col, row, i);
+            i += step;
+            col += dc;
+            row += dr;
+            steps += 1;
+            if steps >= max_steps { return (); }
+        }
+    }
+}
+
+fn seq_write(dir, start, end, step) {
+    let cursor = GET_CURSOR();
+    seq_write_at(cursor[0], cursor[1], dir, start, end, step)
+}
+
+fn seq_write_fn_at(col, row, dir, start, end, iter_f) {
+    let delta = if dir == 0 {
+        [0, 1]
+    } else if dir == 1 {
+        [1, 0]
+    } else if dir == 2 {
+        [0, -1]
+    } else if dir == 3 {
+        [-1, 0]
+    } else {
+        return ();
+    };
+
+    let col = col.to_int();
+    let row = row.to_int();
+    let dc = delta[0];
+    let dr = delta[1];
+
+    let i = start;
+    let steps = 0;
+    let max_steps = 100000;
+    let increasing = start <= end;
+
+    while if increasing { i <= end } else { i >= end } {
+        if col < 0 || row < 0 { return (); }
+        SET_CELL(col, row, i);
+        let next = iter_f.call(i);
+        if next == i { return (); }
+        i = next;
+        col += dc;
+        row += dr;
+        steps += 1;
+        if steps >= max_steps { return (); }
+    }
+}
+
+fn seq_write_fn(dir, start, end, iter_f) {
+    let cursor = GET_CURSOR();
+    seq_write_fn_at(cursor[0], cursor[1], dir, start, end, iter_f)
+}
+
+// Back-compat wrappers (older names)
+fn v_seq(col, row, start, end, step) { seq_write_at(col, row, 0, start, end, step) }
+fn v_seq_at(start, end, step) { seq_write(0, start, end, step) }
+fn h_seq(start, end, step) { seq_write(1, start, end, step) }
+fn v_seq_fn(start, end, iter_f) { seq_write_fn(0, start, end, iter_f) }
+fn h_seq_fn(start, end, iter_f) { seq_write_fn(1, start, end, iter_f) }

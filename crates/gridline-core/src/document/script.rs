@@ -62,6 +62,12 @@ impl ScriptContext {
 
         decls.push_str(&format!("let HAS_SELECTION = {};\n", self.has_selection));
 
+        // Helper for scripts: functions cannot capture script-scope `let` vars.
+        // This returns a constant [col, row] for the current script invocation.
+        decls.push_str(&format!(
+            "fn GET_CURSOR() {{ [{}, {}] }}\n",
+            self.cursor_col, self.cursor_row
+        ));
         if let Some((c1, r1, c2, r2)) = self.selection {
             decls.push_str(&format!(
                 "let SEL_C1 = {}; let SEL_R1 = {}; let SEL_C2 = {}; let SEL_R2 = {};\n",
