@@ -87,7 +87,7 @@ impl Document {
     /// Execute a Rhai script with write access to the spreadsheet.
     ///
     /// The script can use:
-    /// - All read builtins (CELL, VALUE, SUM_RANGE, etc.)
+    /// - All read builtins (CELL, VALUE, SUM_RANGE, PARSE_CELL, etc.)
     /// - Write builtins (SET_CELL, CLEAR_CELL, SET_RANGE, CLEAR_RANGE)
 
     /// - Context variables (CURSOR_ROW, CURSOR_COL, HAS_SELECTION, SEL_R1, etc.)

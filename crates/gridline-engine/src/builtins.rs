@@ -6,11 +6,12 @@
 //! - If you add a new built-in range function, update `RANGE_BUILTINS` and
 //!   register its implementation in `register_builtins`.
 
-use crate::engine::{Cell, CellRef, CellType, Grid, ValueCache, preprocess_script};
+use crate::engine::{Cell, CellRef, CellType, Grid, ValueCache, parse_range, preprocess_script};
 use crate::plot::{PlotKind, PlotSpec, format_plot_spec};
 use rand::Rng;
 use regex::Regex;
-use rhai::{Dynamic, Engine, FnPtr, NativeCallContext};
+use rhai::{Dynamic, Engine, EvalAltResult, FnPtr, NativeCallContext, Position};
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -120,6 +121,14 @@ fn eval_script_cell(ctx: &NativeCallContext, script: &str) -> Option<f64> {
         return Some(n as f64);
     }
     None
+}
+
+fn invalid_arg(message: &str) -> Box<EvalAltResult> {
+    EvalAltResult::ErrorRuntime(message.into(), Position::NONE).into()
+}
+
+fn to_usize(value: i64, label: &str) -> Result<usize, Box<EvalAltResult>> {
+    usize::try_from(value).map_err(|_| invalid_arg(&format!("{} must be >= 0", label)))
 }
 
 fn cell_value_or_zero(
@@ -459,10 +468,67 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
+    // PARSE_CELL("A1"): returns [row, col] (0-indexed)
+    engine.register_fn(
+        "PARSE_CELL",
+        |cell_str: &str| -> Result<rhai::Array, Box<EvalAltResult>> {
+            let Some(cell_ref) = CellRef::from_str(cell_str) else {
+                return Err(invalid_arg(&format!(
+                    "Invalid cell reference: {}",
+                    cell_str
+                )));
+            };
+            Ok(vec![
+                Dynamic::from(cell_ref.row as i64),
+                Dynamic::from(cell_ref.col as i64),
+            ])
+        },
+    );
+
+    // FORMAT_CELL(row, col): returns "A1" (0-indexed)
+    engine.register_fn(
+        "FORMAT_CELL",
+        |row: i64, col: i64| -> Result<String, Box<EvalAltResult>> {
+            let row = to_usize(row, "row")?;
+            let col = to_usize(col, "col")?;
+            Ok(CellRef::new(row, col).to_string())
+        },
+    );
+
+    // PARSE_RANGE("A1:B4"): returns [r1, c1, r2, c2] (0-indexed, row/col)
+
+    engine.register_fn(
+        "PARSE_RANGE",
+        |range: &str| -> Result<rhai::Array, Box<EvalAltResult>> {
+            let Some((r1, c1, r2, c2)) = parse_range(range) else {
+                return Err(invalid_arg(&format!("Invalid range reference: {}", range)));
+            };
+            Ok(vec![
+                Dynamic::from(r1 as i64),
+                Dynamic::from(c1 as i64),
+                Dynamic::from(r2 as i64),
+                Dynamic::from(c2 as i64),
+            ])
+        },
+    );
+
+    // FORMAT_RANGE(r1, c1, r2, c2): returns "A1:B4" (0-indexed)
+    engine.register_fn(
+        "FORMAT_RANGE",
+        |r1: i64, c1: i64, r2: i64, c2: i64| -> Result<String, Box<EvalAltResult>> {
+            let r1 = to_usize(r1, "r1")?;
+            let c1 = to_usize(c1, "c1")?;
+            let r2 = to_usize(r2, "r2")?;
+            let c2 = to_usize(c2, "c2")?;
+            Ok(format!("{}:{}", CellRef::new(r1, c1), CellRef::new(r2, c2)))
+        },
+    );
+
     // SPILL(x): converts ranges to arrays, identity for arrays.
     // Arrays automatically spill down when returned from a formula.
     // Function form: SPILL(0..=10) or SPILL(arr)
     engine.register_fn("SPILL", |arr: rhai::Array| -> rhai::Array { arr });
+
     engine.register_fn("SPILL", |range: std::ops::Range<i64>| -> rhai::Array {
         range.map(Dynamic::from).collect()
     });
@@ -891,6 +957,86 @@ mod tests {
         assert_eq!(result[0].clone().cast::<f64>(), 10.0);
         assert_eq!(result[1].clone().cast::<f64>(), 20.0);
         assert_eq!(result[2].clone().cast::<f64>(), 30.0);
+    }
+
+    #[test]
+    fn test_parse_cell_and_format_cell() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let mut engine = Engine::new();
+        let value_cache = ValueCache::default();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: rhai::Array = engine.eval("PARSE_CELL(\"A1\")").unwrap();
+        assert_eq!(result[0].clone().cast::<i64>(), 0);
+        assert_eq!(result[1].clone().cast::<i64>(), 0);
+
+        let result: rhai::Array = engine.eval("PARSE_CELL(\"B4\")").unwrap();
+        assert_eq!(result[0].clone().cast::<i64>(), 3);
+        assert_eq!(result[1].clone().cast::<i64>(), 1);
+
+        let result: String = engine.eval("FORMAT_CELL(3, 1)").unwrap();
+        assert_eq!(result, "B4");
+    }
+
+    #[test]
+    fn test_parse_range_and_format_range() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let mut engine = Engine::new();
+        let value_cache = ValueCache::default();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: rhai::Array = engine.eval("PARSE_RANGE(\"A1:B4\")").unwrap();
+        assert_eq!(result[0].clone().cast::<i64>(), 0);
+        assert_eq!(result[1].clone().cast::<i64>(), 0);
+        assert_eq!(result[2].clone().cast::<i64>(), 3);
+        assert_eq!(result[3].clone().cast::<i64>(), 1);
+
+        let result: String = engine.eval("FORMAT_RANGE(0, 0, 3, 1)").unwrap();
+        assert_eq!(result, "A1:B4");
+    }
+
+    #[test]
+    fn test_parse_cell_invalid_reference() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let mut engine = Engine::new();
+        let value_cache = ValueCache::default();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: Result<rhai::Array, _> = engine.eval("PARSE_CELL(\"A0\")");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_range_invalid_reference() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let mut engine = Engine::new();
+        let value_cache = ValueCache::default();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: Result<rhai::Array, _> = engine.eval("PARSE_RANGE(\"A1\")");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_cell_rejects_negative_indices() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let mut engine = Engine::new();
+        let value_cache = ValueCache::default();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: Result<String, _> = engine.eval("FORMAT_CELL(-1, 0)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_range_rejects_negative_indices() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let mut engine = Engine::new();
+        let value_cache = ValueCache::default();
+        register_builtins(&mut engine, grid, value_cache);
+
+        let result: Result<String, _> = engine.eval("FORMAT_RANGE(0, -1, 2, 2)");
+        assert!(result.is_err());
     }
 
     #[test]
