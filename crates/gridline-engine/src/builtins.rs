@@ -24,7 +24,7 @@ pub struct RangeBuiltin {
 pub const RANGE_BUILTINS: &[RangeBuiltin] = &[
     RangeBuiltin {
         sheet_name: "SUM",
-        rhai_name: "sum_range",
+        rhai_name: "SUM_RANGE",
         description: "Sum of numeric values in a cell range",
     },
     RangeBuiltin {
@@ -44,37 +44,37 @@ pub const RANGE_BUILTINS: &[RangeBuiltin] = &[
     },
     RangeBuiltin {
         sheet_name: "MAX",
-        rhai_name: "max_range",
+        rhai_name: "MAX_RANGE",
         description: "Maximum numeric value in a cell range",
     },
     RangeBuiltin {
         sheet_name: "BARCHART",
-        rhai_name: "barchart_range",
+        rhai_name: "BARCHART_RANGE",
         description: "Render a bar chart for the given range",
     },
     RangeBuiltin {
         sheet_name: "LINECHART",
-        rhai_name: "linechart_range",
+        rhai_name: "LINECHART_RANGE",
         description: "Render a line chart for the given range",
     },
     RangeBuiltin {
         sheet_name: "SCATTER",
-        rhai_name: "scatter_range",
+        rhai_name: "SCATTER_RANGE",
         description: "Render a scatter plot for a 2-column range",
     },
     RangeBuiltin {
         sheet_name: "VEC",
-        rhai_name: "vec_range",
+        rhai_name: "VEC_RANGE",
         description: "Convert a range to an array",
     },
     RangeBuiltin {
         sheet_name: "SUMIF",
-        rhai_name: "sumif_range",
+        rhai_name: "SUMIF_RANGE",
         description: "Sum values where predicate is true",
     },
     RangeBuiltin {
         sheet_name: "COUNTIF",
-        rhai_name: "countif_range",
+        rhai_name: "COUNTIF_RANGE",
         description: "Count cells where predicate is true",
     },
 ];
@@ -185,7 +185,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_cell = grid.clone();
     let cache_cell = value_cache.clone();
     engine.register_fn(
-        "cell",
+        "CELL",
         move |ctx: NativeCallContext, row: i64, col: i64| -> f64 {
             let cell_ref = CellRef::new(row as usize, col as usize);
 
@@ -223,7 +223,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_value = grid.clone();
     let cache_value = value_cache.clone();
     engine.register_fn(
-        "value",
+        "VALUE",
         move |ctx: NativeCallContext, row: i64, col: i64| -> Dynamic {
             let cell_ref = CellRef::new(row as usize, col as usize);
 
@@ -255,7 +255,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_sum = grid.clone();
     let cache_sum = value_cache.clone();
     engine.register_fn(
-        "sum_range",
+        "SUM_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -275,7 +275,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_avg = grid.clone();
     let cache_avg = value_cache.clone();
     engine.register_fn(
-        "avg_range",
+        "AVG_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -297,7 +297,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_count = grid.clone();
     let cache_count = value_cache.clone();
     engine.register_fn(
-        "count_range",
+        "COUNT_RANGE",
         move |_ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -326,7 +326,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_min = grid.clone();
     let cache_min = value_cache.clone();
     engine.register_fn(
-        "min_range",
+        "MIN_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -353,7 +353,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_max = grid.clone();
     let cache_max = value_cache.clone();
     engine.register_fn(
-        "max_range",
+        "MAX_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> f64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -378,38 +378,38 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
     // Plot specs (rendered by the TUI)
     engine.register_fn(
-        "barchart_range",
+        "BARCHART_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64| -> String {
             make_plot_spec(PlotKind::Bar, r1, c1, r2, c2, None, None, None)
         },
     );
     engine.register_fn(
-        "barchart_range",
+        "BARCHART_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, title: String| -> String {
             make_plot_spec(PlotKind::Bar, r1, c1, r2, c2, Some(title), None, None)
         },
     );
     engine.register_fn(
-        "barchart_range",
+        "BARCHART_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, title: String, x: String, y: String| -> String {
             make_plot_spec(PlotKind::Bar, r1, c1, r2, c2, Some(title), Some(x), Some(y))
         },
     );
 
     engine.register_fn(
-        "linechart_range",
+        "LINECHART_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64| -> String {
             make_plot_spec(PlotKind::Line, r1, c1, r2, c2, None, None, None)
         },
     );
     engine.register_fn(
-        "linechart_range",
+        "LINECHART_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, title: String| -> String {
             make_plot_spec(PlotKind::Line, r1, c1, r2, c2, Some(title), None, None)
         },
     );
     engine.register_fn(
-        "linechart_range",
+        "LINECHART_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, title: String, x: String, y: String| -> String {
             make_plot_spec(
                 PlotKind::Line,
@@ -425,19 +425,19 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     );
 
     engine.register_fn(
-        "scatter_range",
+        "SCATTER_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64| -> String {
             make_plot_spec(PlotKind::Scatter, r1, c1, r2, c2, None, None, None)
         },
     );
     engine.register_fn(
-        "scatter_range",
+        "SCATTER_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, title: String| -> String {
             make_plot_spec(PlotKind::Scatter, r1, c1, r2, c2, Some(title), None, None)
         },
     );
     engine.register_fn(
-        "scatter_range",
+        "SCATTER_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, title: String, x: String, y: String| -> String {
             make_plot_spec(
                 PlotKind::Scatter,
@@ -487,7 +487,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_vec = grid.clone();
     let cache_vec = value_cache.clone();
     engine.register_fn(
-        "vec_range",
+        "VEC_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64| -> rhai::Array {
             // Build row/col indices respecting direction
             let rows: Vec<usize> = if r1 <= r2 {
@@ -555,7 +555,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_sumif = grid.clone();
     let cache_sumif = value_cache.clone();
     engine.register_fn(
-        "sumif_range",
+        "SUMIF_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64, pred: FnPtr| -> f64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -605,7 +605,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let grid_countif = grid.clone();
     let cache_countif = value_cache.clone();
     engine.register_fn(
-        "countif_range",
+        "COUNTIF_RANGE",
         move |ctx: NativeCallContext, r1: i64, c1: i64, r2: i64, c2: i64, pred: FnPtr| -> i64 {
             let min_row = r1.min(r2) as usize;
             let max_row = r1.max(r2) as usize;
@@ -737,8 +737,8 @@ pub fn register_script_builtins(
     );
 
     // SET_RANGE(r1, c1, r2, c2, value) - Fill range with value
-    let grid_SET_RANGE = grid.clone();
-    let mods_SET_RANGE = modifications.clone();
+    let grid_set_range = grid.clone();
+    let mods_set_range = modifications.clone();
     engine.register_fn(
         "SET_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64, value: Dynamic| {
@@ -749,12 +749,12 @@ pub fn register_script_builtins(
 
             let new_cell = dynamic_to_cell(value);
 
-            let mut mods = mods_SET_RANGE.lock().unwrap();
+            let mut mods = mods_set_range.lock().unwrap();
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(row, col);
-                    let old_cell = grid_SET_RANGE.get(&cell_ref).map(|r| r.clone());
-                    grid_SET_RANGE.insert(cell_ref.clone(), new_cell.clone());
+                    let old_cell = grid_set_range.get(&cell_ref).map(|r| r.clone());
+                    grid_set_range.insert(cell_ref.clone(), new_cell.clone());
 
                     mods.entry(cell_ref)
                         .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
@@ -765,8 +765,8 @@ pub fn register_script_builtins(
     );
 
     // CLEAR_RANGE(r1, c1, r2, c2) - Clear a range of cells
-    let grid_CLEAR_RANGE = grid.clone();
-    let mods_CLEAR_RANGE = modifications.clone();
+    let grid_clear_range = grid.clone();
+    let mods_clear_range = modifications.clone();
     engine.register_fn(
         "CLEAR_RANGE",
         move |r1: i64, c1: i64, r2: i64, c2: i64| {
@@ -775,12 +775,12 @@ pub fn register_script_builtins(
             let min_col = c1.min(c2) as usize;
             let max_col = c1.max(c2) as usize;
 
-            let mut mods = mods_CLEAR_RANGE.lock().unwrap();
+            let mut mods = mods_clear_range.lock().unwrap();
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(row, col);
-                    let old_cell = grid_CLEAR_RANGE.get(&cell_ref).map(|r| r.clone());
-                    grid_CLEAR_RANGE.remove(&cell_ref);
+                    let old_cell = grid_clear_range.get(&cell_ref).map(|r| r.clone());
+                    grid_clear_range.remove(&cell_ref);
 
                     mods.entry(cell_ref)
                         .and_modify(|(_, nc)| *nc = None)
@@ -824,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_range_rhai_name_mapping() {
-        assert_eq!(range_rhai_name("SUM"), Some("sum_range"));
+        assert_eq!(range_rhai_name("SUM"), Some("SUM_RANGE"));
         assert_eq!(range_rhai_name("AVG"), Some("avg_range"));
         assert_eq!(range_rhai_name("NOPE"), None);
     }
@@ -846,7 +846,7 @@ mod tests {
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
-        let result: f64 = engine.eval("sum_range(0, 0, 1, 0)").unwrap();
+        let result: f64 = engine.eval("SUM_RANGE(0, 0, 1, 0)").unwrap();
         assert_eq!(result, 3.0);
     }
 
@@ -861,7 +861,7 @@ mod tests {
         let mut engine = Engine::new();
         register_builtins(&mut engine, grid, value_cache);
 
-        let result: f64 = engine.eval("sum_range(0, 0, 0, 0)").unwrap();
+        let result: f64 = engine.eval("SUM_RANGE(0, 0, 0, 0)").unwrap();
         assert_eq!(result, 5.0);
     }
 
@@ -872,7 +872,7 @@ mod tests {
         let value_cache = ValueCache::default();
         register_builtins(&mut engine, grid, value_cache);
 
-        let s: String = engine.eval("barchart_range(0, 0, 9, 0)").unwrap();
+        let s: String = engine.eval("BARCHART_RANGE(0, 0, 9, 0)").unwrap();
         assert!(s.starts_with(crate::plot::PLOT_PREFIX));
     }
 
@@ -888,7 +888,7 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // Test basic VEC returns array
-        let result: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
+        let result: rhai::Array = engine.eval("VEC_RANGE(0, 0, 2, 0)").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].clone().cast::<f64>(), 10.0);
         assert_eq!(result[1].clone().cast::<f64>(), 20.0);
@@ -906,7 +906,7 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // Test VEC with map transformation
-        let result: rhai::Array = engine.eval("vec_range(0, 0, 1, 0).map(|x| x * 2)").unwrap();
+        let result: rhai::Array = engine.eval("VEC_RANGE(0, 0, 1, 0).map(|x| x * 2)").unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].clone().cast::<f64>(), 20.0);
         assert_eq!(result[1].clone().cast::<f64>(), 40.0);
@@ -925,7 +925,7 @@ mod tests {
 
         // Test VEC with filter
         let result: rhai::Array = engine
-            .eval("vec_range(0, 0, 2, 0).filter(|x| x > 10)")
+            .eval("VEC_RANGE(0, 0, 2, 0).filter(|x| x > 10)")
             .unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].clone().cast::<f64>(), 15.0);
@@ -946,7 +946,7 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // VEC should read from both grid and value_cache
-        let result: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
+        let result: rhai::Array = engine.eval("VEC_RANGE(0, 0, 2, 0)").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].clone().cast::<f64>(), 10.0);
         assert_eq!(result[1].clone().cast::<f64>(), 20.0);
@@ -1026,14 +1026,14 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // Forward direction: A1:A3 = [10, 20, 30]
-        let forward: rhai::Array = engine.eval("vec_range(0, 0, 2, 0)").unwrap();
+        let forward: rhai::Array = engine.eval("VEC_RANGE(0, 0, 2, 0)").unwrap();
         assert_eq!(forward.len(), 3);
         assert_eq!(forward[0].clone().cast::<f64>(), 10.0);
         assert_eq!(forward[1].clone().cast::<f64>(), 20.0);
         assert_eq!(forward[2].clone().cast::<f64>(), 30.0);
 
         // Reverse direction: A3:A1 = [30, 20, 10]
-        let reverse: rhai::Array = engine.eval("vec_range(2, 0, 0, 0)").unwrap();
+        let reverse: rhai::Array = engine.eval("VEC_RANGE(2, 0, 0, 0)").unwrap();
         assert_eq!(reverse.len(), 3);
         assert_eq!(reverse[0].clone().cast::<f64>(), 30.0);
         assert_eq!(reverse[1].clone().cast::<f64>(), 20.0);
@@ -1081,11 +1081,11 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // Sum values > 10: 20 + 30 = 50
-        let result: f64 = engine.eval("sumif_range(0, 0, 3, 0, |x| x > 10)").unwrap();
+        let result: f64 = engine.eval("SUMIF_RANGE(0, 0, 3, 0, |x| x > 10)").unwrap();
         assert_eq!(result, 50.0);
 
         // Sum values <= 10: 10 + 5 = 15
-        let result: f64 = engine.eval("sumif_range(0, 0, 3, 0, |x| x <= 10)").unwrap();
+        let result: f64 = engine.eval("SUMIF_RANGE(0, 0, 3, 0, |x| x <= 10)").unwrap();
         assert_eq!(result, 15.0);
     }
 
@@ -1102,11 +1102,11 @@ mod tests {
         register_builtins(&mut engine, grid, value_cache);
 
         // Count values > 10: 20, 30 = 2
-        let result: i64 = engine.eval("countif_range(0, 0, 3, 0, |x| x > 10)").unwrap();
+        let result: i64 = engine.eval("COUNTIF_RANGE(0, 0, 3, 0, |x| x > 10)").unwrap();
         assert_eq!(result, 2);
 
         // Count values >= 10: 10, 20, 30 = 3
-        let result: i64 = engine.eval("countif_range(0, 0, 3, 0, |x| x >= 10)").unwrap();
+        let result: i64 = engine.eval("COUNTIF_RANGE(0, 0, 3, 0, |x| x >= 10)").unwrap();
         assert_eq!(result, 3);
     }
 
