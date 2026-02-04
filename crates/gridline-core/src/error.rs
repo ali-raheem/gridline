@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use rhai::EvalAltResult;
+
 /// Errors that can occur in the Gridline application
 #[derive(Error, Debug)]
 pub enum GridlineError {
@@ -30,7 +32,14 @@ pub enum GridlineError {
     NothingToRedo,
 
     #[error("Rhai error: {0}")]
-    Rhai(String),
+    Rhai(
+        #[from]
+        #[source]
+        Box<EvalAltResult>,
+    ),
+
+    #[error("Rhai compile error: {0}")]
+    RhaiCompile(String),
 }
 
 pub type Result<T> = std::result::Result<T, GridlineError>;

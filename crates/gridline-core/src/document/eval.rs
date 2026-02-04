@@ -66,6 +66,7 @@ impl Document {
                         }
                     }
                     Err(e) => {
+                        let e = e.to_string();
                         // Show first 50 chars of error for debugging (UTF-8 safe)
                         let mut chars = e.chars();
                         let prefix: String = chars.by_ref().take(50).collect();

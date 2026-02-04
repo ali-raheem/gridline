@@ -118,7 +118,7 @@ impl Document {
         );
 
         if let Some(err) = compile_error {
-            return Err(GridlineError::Rhai(err));
+            return Err(GridlineError::RhaiCompile(err));
         }
 
         // Build the full script with context declarations

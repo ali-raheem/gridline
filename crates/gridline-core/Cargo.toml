@@ -14,5 +14,5 @@ path = "src/lib.rs"
 gridline-engine = { path = "../gridline-engine", version = "0.2.0" }
 
 dashmap = "6"
-rhai = "1.24.0"
+rhai = { version = "1.24.0", features = ["sync"] }
 thiserror = "2.0"

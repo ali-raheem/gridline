@@ -131,6 +131,43 @@ fn to_usize(value: i64, label: &str) -> Result<usize, Box<EvalAltResult>> {
     usize::try_from(value).map_err(|_| invalid_arg(&format!("{} must be >= 0", label)))
 }
 
+fn to_decimal_places(value: i64) -> Result<usize, Box<EvalAltResult>> {
+    const MAX_DECIMALS: usize = 12;
+    let places = to_usize(value, "decimals")?;
+    if places > MAX_DECIMALS {
+        return Err(invalid_arg(&format!(
+            "decimals must be <= {}",
+            MAX_DECIMALS
+        )));
+    }
+    Ok(places)
+}
+
+fn fixed_decimal_string(n: f64, decimals: usize) -> String {
+    if n.is_nan() {
+        return "#NAN!".to_string();
+    }
+    if n.is_infinite() {
+        return "#INF!".to_string();
+    }
+
+    // Fixed number of decimal places (always prints trailing zeros).
+    format!("{:.*}", decimals, n)
+}
+
+fn money_string(n: f64, symbol: &str, decimals: usize) -> String {
+    if n.is_nan() {
+        return "#NAN!".to_string();
+    }
+    if n.is_infinite() {
+        return "#INF!".to_string();
+    }
+
+    let sign = if n.is_sign_negative() { "-" } else { "" };
+    let abs = n.abs();
+    format!("{}{}{}", sign, symbol, fixed_decimal_string(abs, decimals))
+}
+
 fn cell_value_or_zero(
     ctx: &NativeCallContext,
     grid: &Grid,
@@ -634,6 +671,47 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     engine.register_fn("RANDINT", |min: i64, max: i64| -> i64 {
         rand::thread_rng().r#gen_range(min..=max)
     });
+
+    // FIXED(n, decimals): format with a fixed number of decimal places.
+    engine.register_fn(
+        "FIXED",
+        |n: f64, decimals: i64| -> Result<String, Box<EvalAltResult>> {
+            let decimals = to_decimal_places(decimals)?;
+            Ok(fixed_decimal_string(n, decimals))
+        },
+    );
+    engine.register_fn(
+        "FIXED",
+        |n: i64, decimals: i64| -> Result<String, Box<EvalAltResult>> {
+            let decimals = to_decimal_places(decimals)?;
+            Ok(fixed_decimal_string(n as f64, decimals))
+        },
+    );
+
+    // MONEY(n, symbol[, decimals]): format as currency (no separators).
+    // Examples:
+    //   MONEY(15.0424, "£")    -> "£15.04"
+    //   MONEY(-2, "$", 0)      -> "-$2"
+    engine.register_fn("MONEY", |n: f64, symbol: &str| -> String {
+        money_string(n, symbol, 2)
+    });
+    engine.register_fn("MONEY", |n: i64, symbol: &str| -> String {
+        money_string(n as f64, symbol, 2)
+    });
+    engine.register_fn(
+        "MONEY",
+        |n: f64, symbol: &str, decimals: i64| -> Result<String, Box<EvalAltResult>> {
+            let decimals = to_decimal_places(decimals)?;
+            Ok(money_string(n, symbol, decimals))
+        },
+    );
+    engine.register_fn(
+        "MONEY",
+        |n: i64, symbol: &str, decimals: i64| -> Result<String, Box<EvalAltResult>> {
+            let decimals = to_decimal_places(decimals)?;
+            Ok(money_string(n as f64, symbol, decimals))
+        },
+    );
 
     // SUMIF(c1, r1, c2, r2, predicate): sum values where predicate returns true
     let grid_sumif = grid.clone();

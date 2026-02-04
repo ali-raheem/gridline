@@ -1,8 +1,10 @@
 //! Gridline - CLI + optional frontends.
 
+use anyhow::{Context, Result};
 use gridline_core::{CellRef, Document};
 use std::env;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 mod default_functions;
 
@@ -15,7 +17,7 @@ fn run_command_mode(
     functions_files: Vec<PathBuf>,
     output_file: Option<PathBuf>,
     no_default_functions: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<bool> {
     // Create minimal document instance
     let mut doc = Document::new();
 
@@ -53,7 +55,8 @@ fn run_command_mode(
 
     let cell_ref = CellRef::new(0, 0); // col, row
 
-    doc.set_cell_from_input(cell_ref.clone(), &formula_with_eq)?;
+    doc.set_cell_from_input(cell_ref.clone(), &formula_with_eq)
+        .context("failed to evaluate formula")?;
 
     // Evaluate and get result
     let result = doc.get_cell_display(&cell_ref);
@@ -68,19 +71,15 @@ fn run_command_mode(
     // Output handling
     if let Some(output_path) = output_file {
         // Write to markdown (handles arrays as spilled grid)
-        gridline_core::storage::write_markdown(&output_path, &mut doc)?;
+        gridline_core::storage::write_markdown(&output_path, &mut doc)
+            .with_context(|| format!("failed to write markdown to {}", output_path.display()))?;
         eprintln!("Result written to {}", output_path.display());
     } else {
         // Print to stdout
         print_command_result(&result, &cell_ref, &mut doc);
     }
 
-    // Exit with appropriate code
-    if is_error {
-        std::process::exit(1);
-    }
-
-    Ok(())
+    Ok(is_error)
 }
 
 /// Print command result to stdout, handling array/spill results
@@ -131,7 +130,7 @@ fn print_usage() {
     eprintln!("  -h, --help                Print help");
 }
 
-fn main() {
+fn try_main() -> Result<ExitCode> {
     let args: Vec<String> = env::args().collect();
 
     let mut file_path: Option<PathBuf> = None;
@@ -147,13 +146,13 @@ fn main() {
         match args[i].as_str() {
             "-h" | "--help" => {
                 print_usage();
-                return;
+                return Ok(ExitCode::SUCCESS);
             }
             "-c" | "--command" => {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("Error: --command requires a formula string");
-                    std::process::exit(1);
+                    return Ok(ExitCode::from(1));
                 }
                 command_formula = Some(args[i].to_string());
             }
@@ -161,7 +160,7 @@ fn main() {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("Error: --functions requires a file path");
-                    std::process::exit(1);
+                    return Ok(ExitCode::from(1));
                 }
                 functions_files.push(PathBuf::from(&args[i]));
             }
@@ -172,7 +171,7 @@ fn main() {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("Error: --output requires a file path");
-                    std::process::exit(1);
+                    return Ok(ExitCode::from(1));
                 }
                 output_file = Some(PathBuf::from(&args[i]));
             }
@@ -180,7 +179,7 @@ fn main() {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("Error: --keymap requires a value");
-                    std::process::exit(1);
+                    return Ok(ExitCode::from(1));
                 }
                 keymap_name = Some(args[i].to_string());
             }
@@ -188,14 +187,14 @@ fn main() {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("Error: --keymap-file requires a file path");
-                    std::process::exit(1);
+                    return Ok(ExitCode::from(1));
                 }
                 keymap_file = Some(PathBuf::from(&args[i]));
             }
             arg if arg.starts_with('-') => {
                 eprintln!("Error: Unknown option: {}", arg);
                 print_usage();
-                std::process::exit(1);
+                return Ok(ExitCode::from(1));
             }
             _ => {
                 if file_path.is_none() {
@@ -203,7 +202,7 @@ fn main() {
                 } else {
                     eprintln!("Error: Unexpected argument: {}", args[i]);
                     print_usage();
-                    std::process::exit(1);
+                    return Ok(ExitCode::from(1));
                 }
             }
         }
@@ -212,24 +211,19 @@ fn main() {
 
     // Command mode: evaluate formula and exit
     if let Some(formula) = command_formula {
-        if let Err(e) =
-            run_command_mode(formula, functions_files, output_file, no_default_functions)
-        {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-        return;
+        let is_error =
+            run_command_mode(formula, functions_files, output_file, no_default_functions)?;
+        return Ok(if is_error {
+            ExitCode::from(1)
+        } else {
+            ExitCode::SUCCESS
+        });
     }
 
     // Non-interactive markdown export from a file.
     if let Some(output_path) = output_file {
-        let mut doc = match Document::with_file(file_path, Vec::new()) {
-            Ok(doc) => doc,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                std::process::exit(1);
-            }
-        };
+        let mut doc =
+            Document::with_file(file_path, Vec::new()).context("failed to initialize document")?;
 
         // Autoload default functions first, then user-specified functions.
         if !no_default_functions {
@@ -254,12 +248,10 @@ fn main() {
             }
         }
 
-        if let Err(e) = gridline_core::storage::write_markdown(&output_path, &mut doc) {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
+        gridline_core::storage::write_markdown(&output_path, &mut doc)
+            .with_context(|| format!("failed to write markdown to {}", output_path.display()))?;
         println!("Exported to {}", output_path.display());
-        return;
+        return Ok(ExitCode::SUCCESS);
     }
 
     // Interactive mode.
@@ -279,17 +271,11 @@ fn main() {
 
         let mut app = match tui::App::with_file(file_path, all_functions, keymap) {
             Ok(app) => app,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                std::process::exit(1);
-            }
+            Err(e) => return Err(e).context("failed to initialize TUI"),
         };
 
-        if let Err(e) = tui::run(&mut app) {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-        return;
+        tui::run(&mut app).context("TUI crashed")?;
+        return Ok(ExitCode::SUCCESS);
     }
 
     #[cfg(not(feature = "tui"))]
@@ -297,6 +283,16 @@ fn main() {
         let _ = (keymap_name, keymap_file);
         eprintln!("Error: interactive mode requires the 'tui' feature");
         eprintln!("Hint: cargo run --features tui");
-        std::process::exit(1);
+        return Ok(ExitCode::from(1));
+    }
+}
+
+fn main() -> ExitCode {
+    match try_main() {
+        Ok(code) => code,
+        Err(err) => {
+            eprintln!("Error: {:#}", err);
+            ExitCode::from(1)
+        }
     }
 }

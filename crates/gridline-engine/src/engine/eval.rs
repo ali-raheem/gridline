@@ -4,7 +4,7 @@
 //! registered (SUM, AVERAGE, cell accessors, etc.). Also handles evaluation
 //! of formulas with optional user-defined custom functions from external files.
 
-use rhai::Engine;
+use rhai::{Engine, EvalAltResult};
 
 use super::{AST, Dynamic, Grid, ValueCache};
 use crate::builtins::ScriptModifications;
@@ -63,15 +63,19 @@ pub fn eval_with_functions(
     engine: &Engine,
     formula: &str,
     custom_ast: Option<&AST>,
-) -> Result<Dynamic, String> {
+) -> Result<Dynamic, Box<EvalAltResult>> {
     if custom_ast.is_some() {
         // For now, use simple AST merging
         // TODO: This has issues with closures not accessing registered functions
-        let formula_ast = engine.compile(formula).map_err(|e| e.to_string())?;
+        let formula_ast = engine.compile(formula).map_err(|e| {
+            let parse_type = *e.0;
+            let pos = e.1;
+            Box::new(EvalAltResult::ErrorParsing(parse_type, pos))
+        })?;
         let merged = custom_ast.unwrap().clone().merge(&formula_ast);
-        engine.eval_ast(&merged).map_err(|e| e.to_string())
+        engine.eval_ast(&merged)
     } else {
-        engine.eval(formula).map_err(|e| e.to_string())
+        engine.eval(formula)
     }
 }
 
@@ -82,14 +86,14 @@ pub fn eval_with_functions_script(
     engine: &Engine,
     formula: &str,
     custom_script: Option<&str>,
-) -> Result<Dynamic, String> {
+) -> Result<Dynamic, Box<EvalAltResult>> {
     if let Some(script) = custom_script {
         // Concatenate custom functions with formula and evaluate as one script
         // This ensures closures can access both custom and registered functions
         let combined = format!("{}\n{}", script, formula);
-        engine.eval(&combined).map_err(|e| e.to_string())
+        engine.eval(&combined)
     } else {
-        engine.eval(formula).map_err(|e| e.to_string())
+        engine.eval(formula)
     }
 }
 

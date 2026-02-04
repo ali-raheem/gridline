@@ -169,6 +169,8 @@ Other built-ins:
 - `RANDINT(min, max)` - random integer in `[min, max]` inclusive
 - `POW(base, exp)` - exponentiation (base^exp)
 - `SQRT(x)` - square root
+- `FIXED(n, decimals)` - format number with fixed decimal places (returns text)
+- `MONEY(n, symbol[, decimals])` - format as currency like `"£15.04"` (returns text)
 - `OUTPUT(value, fn)` - apply function to value and return result (useful for in-place operations like `sort()`)
 
 ### Custom Functions Example 🧩

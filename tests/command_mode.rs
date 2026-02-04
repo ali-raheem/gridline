@@ -104,6 +104,34 @@ fn test_pow_function() {
 }
 
 #[test]
+fn test_fixed_builtin() {
+    let (stdout, _, code) = run_command(&["-c", "FIXED(15, 2)"]);
+    assert_eq!(stdout.trim(), "15.00");
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_money_builtin_default_decimals() {
+    let (stdout, _, code) = run_command(&["-c", "MONEY(15.0424, \"£\")"]);
+    assert_eq!(stdout.trim(), "£15.04");
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_money_builtin_negative() {
+    let (stdout, _, code) = run_command(&["-c", "MONEY(-15.0424, \"£\")"]);
+    assert_eq!(stdout.trim(), "-£15.04");
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_money_builtin_custom_decimals() {
+    let (stdout, _, code) = run_command(&["-c", "MONEY(15.0424, \"£\", 3)"]);
+    assert_eq!(stdout.trim(), "£15.042");
+    assert_eq!(code, 0);
+}
+
+#[test]
 fn test_boolean_true() {
     let (stdout, _, code) = run_command(&["-c", "true"]);
     assert_eq!(stdout.trim(), "TRUE");

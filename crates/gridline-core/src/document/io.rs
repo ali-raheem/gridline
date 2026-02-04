@@ -29,7 +29,7 @@ impl Document {
 
         // Recreate engine because custom functions changed
         if let Some(err) = self.recreate_engine_with_functions() {
-            return Err(GridlineError::Rhai(err));
+            return Err(GridlineError::RhaiCompile(err));
         }
 
         Ok(path_buf)

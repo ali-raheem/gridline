@@ -11,7 +11,7 @@ name = "gridline_engine"
 path = "src/lib.rs"
 
 [dependencies]
-rhai = "1.24.0"
+rhai = { version = "1.24.0", features = ["sync"] }
 regex = "1"
 dashmap = "6"
 serde = { version = "1.0", features = ["derive"] }
