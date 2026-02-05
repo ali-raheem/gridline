@@ -51,7 +51,7 @@ impl GridlineGuiApp {
     fn handle_action(&mut self, action: Action) {
         match action {
             Action::CopySelection => {
-                let text = self.app.copy_selection_to_string();
+                let text = self.app.copy_selection_to_string_and_store();
                 let count = text.lines().count();
                 let ok = <SystemClipboard as ClipboardProvider>::set_text(
                     &mut self.clipboard,
@@ -64,7 +64,7 @@ impl GridlineGuiApp {
                 }
             }
             Action::CutSelection => {
-                let text = self.app.copy_selection_to_string();
+                let text = self.app.copy_selection_to_string_and_store();
                 let count = text.lines().count();
                 let ok = <SystemClipboard as ClipboardProvider>::set_text(
                     &mut self.clipboard,

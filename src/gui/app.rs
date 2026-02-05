@@ -1,6 +1,13 @@
 //! Core application state and business logic (UI-agnostic).
 
-use gridline_core::{CellRef, Document};
+use gridline_core::{Cell, CellRef, Document};
+
+struct InternalClipboard {
+    text: String,
+    source_col: usize,
+    source_row: usize,
+    cells: Vec<(usize, usize, Cell)>,
+}
 
 /// Core application state - contains spreadsheet data and business logic.
 /// This is independent of the UI framework and can be tested in isolation.
@@ -12,6 +19,7 @@ pub struct GuiApp {
     pub edit_buffer: String,
     pub edit_dirty: bool,
     pub status: String,
+    internal_clipboard: Option<InternalClipboard>,
 }
 
 impl GuiApp {
@@ -25,6 +33,7 @@ impl GuiApp {
             edit_buffer: String::new(),
             edit_dirty: false,
             status: String::new(),
+            internal_clipboard: None,
         };
         app.sync_edit_buffer();
         app
@@ -175,6 +184,21 @@ impl GuiApp {
             return;
         }
 
+        if let Some(clip) = self.internal_clipboard.as_ref()
+            && clip.text == s
+        {
+            let pasted = self.doc.paste_cells(
+                c1,
+                r1,
+                clip.source_col,
+                clip.source_row,
+                &clip.cells,
+            );
+            self.sync_edit_buffer();
+            self.status = format!("Pasted {} cell(s) into {}", pasted, self.selection_label());
+            return;
+        }
+
         for (dr, row) in grid.iter().enumerate() {
             for (dc, v) in row.iter().enumerate() {
                 let r = r1 + dr;
@@ -202,6 +226,32 @@ impl GuiApp {
             }
         }
         out
+    }
+
+    /// Copy selection and keep a structured snapshot for internal formula-aware paste.
+    pub fn copy_selection_to_string_and_store(&mut self) -> String {
+        let text = self.copy_selection_to_string();
+        let (c1, r1, c2, r2) = self.selection_bounds();
+        let mut cells = Vec::new();
+        for row in r1..=r2 {
+            for col in c1..=c2 {
+                let cell_ref = CellRef::new(col, row);
+                let cell = self
+                    .doc
+                    .grid
+                    .get(&cell_ref)
+                    .map(|c| c.clone())
+                    .unwrap_or_else(Cell::new_empty);
+                cells.push((col - c1, row - r1, cell));
+            }
+        }
+        self.internal_clipboard = Some(InternalClipboard {
+            text: text.clone(),
+            source_col: c1,
+            source_row: r1,
+            cells,
+        });
+        text
     }
 
     /// Undo last action.
@@ -282,6 +332,7 @@ impl GuiApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gridline_engine::engine::CellType;
 
     #[test]
     fn test_selection_bounds_and_label_order() {
@@ -292,5 +343,22 @@ mod tests {
 
         assert_eq!(app.selection_bounds(), (2, 1, 4, 3));
         assert_eq!(app.selection_label(), "C2:E4");
+    }
+
+    #[test]
+    fn test_internal_copy_paste_shifts_formula_references() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "=B1").unwrap(); // A1
+
+        let mut app = GuiApp::new(doc);
+        let copied = app.copy_selection_to_string_and_store();
+        app.set_selected(CellRef::new(0, 1), false); // A2
+        app.paste_from_clipboard(copied);
+
+        let pasted = app.doc.grid.get(&CellRef::new(0, 1)).unwrap();
+        match &pasted.contents {
+            CellType::Script(s) => assert_eq!(s, "B2"),
+            _ => panic!("Expected formula cell"),
+        }
     }
 }
