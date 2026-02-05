@@ -1,7 +1,7 @@
 //! CSV import/export functionality
 
 use crate::document::Document;
-use crate::error::Result;
+use crate::error::{GridlineError, Result};
 use gridline_engine::engine::{Cell, CellRef};
 use std::io::Write;
 use std::path::Path;
@@ -12,11 +12,19 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
     let mut cells = Vec::new();
 
     for (row_idx, line) in content.lines().enumerate() {
+        let row = start_row.checked_add(row_idx).ok_or_else(|| GridlineError::Parse {
+            line: row_idx + 1,
+            message: "CSV row index overflow from import offset".to_string(),
+        })?;
         for (col_idx, field) in parse_csv_line(line).into_iter().enumerate() {
             if field.is_empty() {
                 continue;
             }
-            let cell_ref = CellRef::new(start_col + col_idx, start_row + row_idx);
+            let col = start_col.checked_add(col_idx).ok_or_else(|| GridlineError::Parse {
+                line: row_idx + 1,
+                message: "CSV column index overflow from import offset".to_string(),
+            })?;
+            let cell_ref = CellRef::new(col, row);
             let cell = parse_csv_field(&field);
             cells.push((cell_ref, cell));
         }
@@ -399,5 +407,63 @@ mod tests {
         write_csv(&output_path, &mut core, None).unwrap();
         let contents = std::fs::read_to_string(output_path).unwrap();
         assert_eq!(contents.trim_end(), "'=1+1");
+    }
+
+    #[test]
+    fn test_parse_csv_rejects_column_overflow_from_offset() {
+        let input_path = std::env::temp_dir().join(format!(
+            "gridline_parse_csv_col_overflow_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(input_path.clone());
+        std::fs::write(&input_path, "1,2").unwrap();
+
+        let err = parse_csv(&input_path, usize::MAX, 0).unwrap_err();
+        match err {
+            GridlineError::Parse { message, .. } => {
+                assert!(message.contains("column index overflow"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_csv_rejects_row_overflow_from_offset() {
+        let input_path = std::env::temp_dir().join(format!(
+            "gridline_parse_csv_row_overflow_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(input_path.clone());
+        std::fs::write(&input_path, "1\n2").unwrap();
+
+        let err = parse_csv(&input_path, 0, usize::MAX).unwrap_err();
+        match err {
+            GridlineError::Parse { message, .. } => {
+                assert!(message.contains("row index overflow"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
+        }
     }
 }
