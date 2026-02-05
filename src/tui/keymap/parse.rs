@@ -88,9 +88,26 @@ pub fn load_keymap(
                     warnings.extend(errs);
                 }
             }
-        } else if requested_name.is_some() {
+        } else if requested_name.is_some() && !is_builtin_keymap(target) {
             warnings.push(format!(
                 "Keymap '{}' not found in {}",
+                target,
+                config_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "keymaps.toml".to_string())
+            ));
+        }
+    }
+
+    if requested_name.is_none() && default_name.is_some() && !is_builtin_keymap(target) {
+        let default_exists = file
+            .as_ref()
+            .and_then(|f| f.keymaps.as_ref())
+            .is_some_and(|keymaps| keymaps.contains_key(target));
+        if !default_exists {
+            warnings.push(format!(
+                "Default keymap '{}' not found in {}; falling back to built-in 'vim'",
                 target,
                 config_path
                     .as_ref()
@@ -118,6 +135,10 @@ fn user_keymaps_path() -> Option<PathBuf> {
     let mut path = proj.config_dir().to_path_buf();
     path.push("keymaps.toml");
     Some(path)
+}
+
+fn is_builtin_keymap(name: &str) -> bool {
+    name.eq_ignore_ascii_case("vim") || name.eq_ignore_ascii_case("emacs")
 }
 
 fn build_custom_keymap(name: &str, entry: &KeymapFile) -> Result<CustomKeymap, Vec<String>> {
@@ -476,6 +497,48 @@ description = "duplicate combo"
                 .iter()
                 .any(|w| w.contains("Duplicate key") && w.contains("normal bindings"))
         );
+
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn load_keymap_warns_when_default_keymap_is_missing() {
+        let temp_path = std::env::temp_dir().join("gridline_keymaps_missing_default.toml");
+        let content = r#"
+[meta]
+default = "nonexistent"
+
+[keymaps.vim]
+description = "custom vim"
+"#;
+        std::fs::write(&temp_path, content).expect("write missing-default keymap");
+
+        let (keymap, warnings) = load_keymap(None, Some(&temp_path));
+        assert_eq!(keymap, Keymap::Vim);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("Default keymap 'nonexistent' not found"))
+        );
+
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn load_keymap_requested_builtin_does_not_warn_missing_custom_entry() {
+        let temp_path = std::env::temp_dir().join("gridline_keymaps_builtin_request.toml");
+        let content = r#"
+[meta]
+default = "vim"
+
+[keymaps.custom]
+description = "custom map"
+"#;
+        std::fs::write(&temp_path, content).expect("write builtin request keymap");
+
+        let (keymap, warnings) = load_keymap(Some("emacs"), Some(&temp_path));
+        assert_eq!(keymap, Keymap::Emacs);
+        assert!(!warnings.iter().any(|w| w.contains("not found in")));
 
         let _ = std::fs::remove_file(&temp_path);
     }
