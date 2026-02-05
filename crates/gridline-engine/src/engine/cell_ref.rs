@@ -41,11 +41,12 @@ impl CellRef {
         let letters = &caps["letters"];
         let numbers = &caps["numbers"];
 
-        let col = letters
-            .to_ascii_uppercase()
-            .bytes()
-            .fold(0usize, |acc, c| acc * 26 + (c - b'A') as usize + 1)
-            - 1;
+        let mut col_acc = 0usize;
+        for c in letters.to_ascii_uppercase().bytes() {
+            let digit = (c - b'A') as usize + 1;
+            col_acc = col_acc.checked_mul(26)?.checked_add(digit)?;
+        }
+        let col = col_acc.checked_sub(1)?;
 
         let row = numbers.parse::<usize>().ok()?.checked_sub(1)?;
 
@@ -55,7 +56,7 @@ impl CellRef {
     /// Convert column index to spreadsheet-style letters (0 -> A, 25 -> Z, 26 -> AA).
     pub fn col_to_letters(col: usize) -> String {
         let mut result = String::new();
-        let mut n = col + 1;
+        let mut n = col as u128 + 1;
         while n > 0 {
             n -= 1;
             result.insert(0, (b'A' + (n % 26) as u8) as char);
@@ -76,5 +77,23 @@ impl std::str::FromStr for CellRef {
 impl fmt::Display for CellRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}", CellRef::col_to_letters(self.col), self.row + 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CellRef;
+
+    #[test]
+    fn test_parse_a1_overflow_returns_none() {
+        let huge = format!("{}1", "Z".repeat(40));
+        assert!(CellRef::from_str(&huge).is_none());
+    }
+
+    #[test]
+    fn test_col_to_letters_handles_max_usize() {
+        let letters = CellRef::col_to_letters(usize::MAX);
+        assert!(!letters.is_empty());
+        assert!(letters.chars().all(|c| c.is_ascii_uppercase()));
     }
 }
