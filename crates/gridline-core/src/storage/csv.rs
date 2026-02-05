@@ -3,10 +3,11 @@
 use crate::document::Document;
 use crate::error::{GridlineError, Result};
 use gridline_engine::engine::{Cell, CellRef};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 const MAX_CSV_FILE_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
+const MAX_IMPORTED_CSV_CELLS: usize = 100_000;
 
 /// Parse a CSV file into cells, starting at the given offset
 pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<(CellRef, Cell)>> {
@@ -22,15 +23,17 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
             ),
         )));
     }
-    let content = std::fs::read_to_string(path)?;
+    let file = std::fs::File::open(path)?;
+    let reader = BufReader::new(file);
     let mut cells = Vec::new();
 
-    for (row_idx, line) in content.lines().enumerate() {
+    for (row_idx, line_res) in reader.lines().enumerate() {
+        let line = line_res?;
         let row = start_row.checked_add(row_idx).ok_or_else(|| GridlineError::Parse {
             line: row_idx + 1,
             message: "CSV row index overflow from import offset".to_string(),
         })?;
-        let fields = parse_csv_line(line).map_err(|message| GridlineError::Parse {
+        let fields = parse_csv_line(&line).map_err(|message| GridlineError::Parse {
             line: row_idx + 1,
             message: message.to_string(),
         })?;
@@ -45,6 +48,16 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
             let cell_ref = CellRef::new(col, row);
             let cell = parse_csv_field(&field);
             cells.push((cell_ref, cell));
+            if cells.len() > MAX_IMPORTED_CSV_CELLS {
+                return Err(GridlineError::Parse {
+                    line: row_idx + 1,
+                    message: format!(
+                        "Too many CSV cells: {} (max {})",
+                        cells.len(),
+                        MAX_IMPORTED_CSV_CELLS
+                    ),
+                });
+            }
         }
     }
 
@@ -551,6 +564,37 @@ mod tests {
             GridlineError::Parse { line, message } => {
                 assert_eq!(line, 1);
                 assert!(message.contains("unterminated quoted field"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_csv_rejects_excessive_cell_count() {
+        let input_path = std::env::temp_dir().join(format!(
+            "gridline_parse_csv_too_many_cells_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(input_path.clone());
+
+        let content = "1\n".repeat(MAX_IMPORTED_CSV_CELLS + 1);
+        std::fs::write(&input_path, content).unwrap();
+
+        let err = parse_csv(&input_path, 0, 0).unwrap_err();
+        match err {
+            GridlineError::Parse { message, .. } => {
+                assert!(message.contains("Too many CSV cells"));
             }
             other => panic!("expected parse error, got {other:?}"),
         }
