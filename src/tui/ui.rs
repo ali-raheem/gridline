@@ -389,10 +389,15 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     let area = centered_rect(88, 88, f.area());
 
     let modal_style = Style::default().fg(Color::White).bg(Color::Black);
+    let keymap_title = match &app.keymap {
+        super::keymap::Keymap::Vim => "Vim Keymap",
+        super::keymap::Keymap::Emacs => "Emacs Keymap",
+        super::keymap::Keymap::Custom(custom) => custom.name.as_str(),
+    };
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Help  Esc/q: close ")
+        .title(format!(" {} ", keymap_title))
         .border_style(Style::default().fg(Color::Green))
         .style(modal_style);
 
@@ -400,11 +405,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     let mut lines: Vec<Line> = Vec::new();
 
     for text in get_help_text(&app.keymap) {
-        let style = if text.ends_with("Keymap") {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
-        } else if text.starts_with("  ") {
+        let style = if text.starts_with("  ") {
             Style::default().fg(Color::White)
         } else {
             Style::default()
