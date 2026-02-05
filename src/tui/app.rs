@@ -7,7 +7,7 @@
 
 use gridline_core::{Document, Result, ScriptContext};
 use gridline_engine::engine::{Cell, CellRef};
-use gridline_engine::plot::{PlotSpec, parse_plot_spec};
+use gridline_engine::plot::{parse_plot_spec, PlotSpec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -544,9 +544,10 @@ impl App {
             }
             "w" | "save" => {
                 if let Some(path) = args {
-                    self.core.file_path = Some(PathBuf::from(path));
+                    self.save_file_as(path);
+                } else {
+                    self.save_file();
                 }
-                self.save_file();
             }
             "wq" => {
                 self.save_file();
@@ -710,6 +711,21 @@ impl App {
         }
     }
 
+    /// Save to a new file path. If save fails, keep the previous file path.
+    pub fn save_file_as(&mut self, path: &str) {
+        let prev_path = self.core.file_path.clone();
+        self.core.file_path = Some(PathBuf::from(path));
+        match self.core.save_file() {
+            Ok(saved) => {
+                self.status_message = format!("Saved to {}", saved.display());
+            }
+            Err(e) => {
+                self.core.file_path = prev_path;
+                self.status_message = format!("Error: {}", e);
+            }
+        }
+    }
+
     /// Import CSV data starting at current cursor position
     fn import_csv(&mut self, path: &str) {
         match self.core.import_csv(path, self.cursor_col, self.cursor_row) {
@@ -782,5 +798,20 @@ mod tests {
             cell.contents,
             CellType::Number(n) if (n - 42.0).abs() < 0.001
         ));
+    }
+
+    #[test]
+    fn test_save_command_with_path_failure_restores_previous_file_path() {
+        let mut app = App::new();
+        let original_path = PathBuf::from("original.grd");
+        app.core.file_path = Some(original_path.clone());
+        app.mode = Mode::Command;
+        app.command_buffer = "w /this/path/does/not/exist/output.grd".to_string();
+
+        let should_quit = app.execute_command();
+
+        assert!(!should_quit);
+        assert_eq!(app.core.file_path, Some(original_path));
+        assert!(app.status_message.starts_with("Error:"));
     }
 }
