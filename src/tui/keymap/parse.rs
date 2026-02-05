@@ -10,17 +10,20 @@ const MAX_BINDINGS_PER_MODE: usize = 512;
 const MAX_TOTAL_BINDINGS: usize = 1_024;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KeymapsFile {
     meta: Option<KeymapsMeta>,
     keymaps: Option<HashMap<String, KeymapFile>>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KeymapsMeta {
     default: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KeymapFile {
     description: Option<String>,
     normal: Option<HashMap<String, String>>,
@@ -231,6 +234,10 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
     let (mods, key_part) = if !trimmed.contains('-') {
         (KeyModifiers::empty(), trimmed)
     } else if let Some(mod_str) = trimmed.strip_suffix('-') {
+        let mod_str = mod_str.trim_end_matches('-');
+        if mod_str.is_empty() {
+            return Err("missing modifier before '-'".to_string());
+        }
         let modifiers = parse_modifiers(mod_str)?;
         (modifiers, "-")
     } else {
@@ -250,19 +257,29 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
 
 fn parse_modifiers(input: &str) -> Result<KeyModifiers, String> {
     let mut modifiers = KeyModifiers::empty();
+    let mut seen_any = false;
     for part in input.split('-') {
-        if part.trim().is_empty() {
-            continue;
+        let raw = part.trim();
+        if raw.is_empty() {
+            return Err("empty modifier segment".to_string());
         }
-        let norm = part.trim().to_ascii_lowercase();
-        match norm.as_str() {
-            "c" | "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
-            "m" | "alt" | "meta" => modifiers.insert(KeyModifiers::ALT),
-            "s" | "shift" => modifiers.insert(KeyModifiers::SHIFT),
+        seen_any = true;
+        let norm = raw.to_ascii_lowercase();
+        let flag = match norm.as_str() {
+            "c" | "ctrl" | "control" => KeyModifiers::CONTROL,
+            "m" | "alt" | "meta" => KeyModifiers::ALT,
+            "s" | "shift" => KeyModifiers::SHIFT,
             _ => {
                 return Err(format!("unknown modifier '{}'", part));
             }
+        };
+        if modifiers.contains(flag) {
+            return Err(format!("duplicate modifier '{}'", raw));
         }
+        modifiers.insert(flag);
+    }
+    if !seen_any {
+        return Err("empty modifier".to_string());
     }
     Ok(modifiers)
 }
@@ -418,6 +435,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_key_combo_rejects_missing_modifier_for_dash_key() {
+        let err = parse_key_combo("--").unwrap_err();
+        assert!(err.contains("missing modifier"));
+    }
+
+    #[test]
+    fn parse_key_combo_rejects_duplicate_modifier() {
+        let err = parse_key_combo("C-C-s").unwrap_err();
+        assert!(err.contains("duplicate modifier"));
+    }
+
+    #[test]
     fn load_keymap_falls_back_with_warning() {
         let temp_path = std::env::temp_dir().join("gridline_keymaps_test.toml");
         let content = r#"
@@ -539,6 +568,23 @@ description = "custom map"
         let (keymap, warnings) = load_keymap(Some("emacs"), Some(&temp_path));
         assert_eq!(keymap, Keymap::Emacs);
         assert!(!warnings.iter().any(|w| w.contains("not found in")));
+
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn load_keymap_rejects_unknown_fields() {
+        let temp_path = std::env::temp_dir().join("gridline_keymaps_unknown_field.toml");
+        let content = r#"
+[meta]
+default = "vim"
+extra = "not-allowed"
+"#;
+        std::fs::write(&temp_path, content).expect("write unknown-field keymap");
+
+        let (keymap, warnings) = load_keymap(None, Some(&temp_path));
+        assert_eq!(keymap, Keymap::Vim);
+        assert!(warnings.iter().any(|w| w.contains("Failed to parse")));
 
         let _ = std::fs::remove_file(&temp_path);
     }
