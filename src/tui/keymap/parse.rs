@@ -153,8 +153,7 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
     if trimmed.is_empty() {
         return Err("empty key".to_string());
     }
-    if trimmed.len() == 1 {
-        let ch = trimmed.chars().next().unwrap();
+    if let Some(ch) = parse_single_char(trimmed) {
         return Ok(KeyCombo {
             code: KeyCode::Char(ch),
             modifiers: KeyModifiers::empty(),
@@ -168,7 +167,7 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
         (modifiers, "-")
     } else {
         let mut split = trimmed.rsplitn(2, '-');
-        let key_part = split.next().unwrap();
+        let key_part = split.next().ok_or_else(|| "empty key".to_string())?;
         let mod_str = split.next().unwrap_or_default();
         let modifiers = parse_modifiers(mod_str)?;
         (modifiers, key_part)
@@ -205,8 +204,8 @@ fn parse_key_code(input: &str) -> Result<KeyCode, String> {
     if trimmed.is_empty() {
         return Err("empty key".to_string());
     }
-    if trimmed.len() == 1 {
-        return Ok(KeyCode::Char(trimmed.chars().next().unwrap()));
+    if let Some(ch) = parse_single_char(trimmed) {
+        return Ok(KeyCode::Char(ch));
     }
     let norm = trimmed.to_ascii_lowercase();
     match norm.as_str() {
@@ -240,6 +239,16 @@ fn parse_key_code(input: &str) -> Result<KeyCode, String> {
         "rbracket" | "rightbracket" => Ok(KeyCode::Char(']')),
         "equal" => Ok(KeyCode::Char('=')),
         _ => Err(format!("unknown key '{}'", input)),
+    }
+}
+
+fn parse_single_char(input: &str) -> Option<char> {
+    let mut chars = input.chars();
+    let ch = chars.next()?;
+    if chars.next().is_none() {
+        Some(ch)
+    } else {
+        None
     }
 }
 
@@ -311,6 +320,20 @@ mod tests {
     fn parse_key_combo_ctrl_dash() {
         let combo = parse_key_combo("C--").expect("combo");
         assert_eq!(combo.code, KeyCode::Char('-'));
+        assert!(combo.modifiers.contains(KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn parse_key_combo_unicode_char() {
+        let combo = parse_key_combo("é").expect("combo");
+        assert_eq!(combo.code, KeyCode::Char('é'));
+        assert!(combo.modifiers.is_empty());
+    }
+
+    #[test]
+    fn parse_key_combo_ctrl_unicode_char() {
+        let combo = parse_key_combo("C-ø").expect("combo");
+        assert_eq!(combo.code, KeyCode::Char('ø'));
         assert!(combo.modifiers.contains(KeyModifiers::CONTROL));
     }
 
