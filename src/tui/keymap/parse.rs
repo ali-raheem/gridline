@@ -55,7 +55,9 @@ pub fn load_keymap(
                             warnings.push(format!("Failed to parse {}: {}", path.display(), err))
                         }
                     },
-                    Err(err) => warnings.push(format!("Failed to read {}: {}", path.display(), err)),
+                    Err(err) => {
+                        warnings.push(format!("Failed to read {}: {}", path.display(), err))
+                    }
                 },
                 Err(err) => warnings.push(format!(
                     "Failed to read metadata for {}: {}",
@@ -169,7 +171,17 @@ fn parse_mode_bindings(
     }
     for (combo_str, action_str) in raw {
         match (parse_key_combo(combo_str), action_from_str(action_str)) {
-            (Ok(combo), Some(action)) => bindings.push(Binding { combo, action }),
+            (Ok(combo), Some(action)) => {
+                if bindings.iter().any(|binding| binding.combo == combo) {
+                    errors.push(format!(
+                        "Duplicate key '{}' in {} bindings",
+                        combo.display(),
+                        mode
+                    ));
+                    continue;
+                }
+                bindings.push(Binding { combo, action });
+            }
             (Ok(_), None) => errors.push(format!(
                 "Invalid action '{}' in {} bindings",
                 action_str, mode
@@ -436,6 +448,33 @@ description = "Vim defaults"
             warnings
                 .iter()
                 .any(|w| w.contains("Too many normal bindings"))
+        );
+
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn load_keymap_rejects_duplicate_key_combos() {
+        let temp_path = std::env::temp_dir().join("gridline_keymaps_dups.toml");
+        let content = r#"
+[meta]
+default = "dup"
+
+[keymaps.dup]
+description = "duplicate combo"
+
+[keymaps.dup.normal]
+"C-s" = "save"
+"ctrl-s" = "undo"
+"#;
+        std::fs::write(&temp_path, content).expect("write duplicate combo keymap");
+
+        let (keymap, warnings) = load_keymap(Some("dup"), Some(&temp_path));
+        assert_eq!(keymap, Keymap::Vim);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("Duplicate key") && w.contains("normal bindings"))
         );
 
         let _ = std::fs::remove_file(&temp_path);
