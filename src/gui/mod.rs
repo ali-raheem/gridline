@@ -26,6 +26,40 @@ use self::input::handle_keyboard_input;
 use self::state::GuiState;
 use self::ui::{CellRenderer, apply_theme, draw_central_grid, draw_status_bar, draw_top_panel};
 
+fn selection_cell_count(app: &GuiApp) -> usize {
+    let (c1, r1, c2, r2) = app.selection_bounds();
+    (c2 - c1 + 1) * (r2 - r1 + 1)
+}
+
+fn format_cell_count(count: usize) -> String {
+    if count == 1 {
+        "1 cell".to_string()
+    } else {
+        format!("{count} cells")
+    }
+}
+
+fn handle_copy_selection<C: ClipboardProvider>(app: &mut GuiApp, clipboard: &mut C) {
+    let text = app.copy_selection_to_string_and_store();
+    let count = selection_cell_count(app);
+    if clipboard.set_text(text) {
+        app.status = format!("✓ Copied {}", format_cell_count(count));
+    } else {
+        app.status = "✗ Copy failed: clipboard unavailable".to_string();
+    }
+}
+
+fn handle_cut_selection<C: ClipboardProvider>(app: &mut GuiApp, clipboard: &mut C) {
+    let text = app.copy_selection_to_string_and_store();
+    let count = selection_cell_count(app);
+    if clipboard.set_text(text) {
+        app.clear_selection();
+        app.status = format!("✓ Cut {}", format_cell_count(count));
+    } else {
+        app.status = "✗ Cut failed: clipboard unavailable".to_string();
+    }
+}
+
 /// Main GUI application wrapper implementing eframe::App trait.
 pub struct GridlineGuiApp {
     app: GuiApp,
@@ -51,31 +85,10 @@ impl GridlineGuiApp {
     fn handle_action(&mut self, action: Action) {
         match action {
             Action::CopySelection => {
-                let text = self.app.copy_selection_to_string_and_store();
-                let count = text.lines().count();
-                let ok = <SystemClipboard as ClipboardProvider>::set_text(
-                    &mut self.clipboard,
-                    text.clone(),
-                );
-                if ok {
-                    self.app.status = format!("✓ Copied {} cells", count.max(1));
-                } else {
-                    self.app.status = "✗ Copy failed: clipboard unavailable".to_string();
-                }
+                handle_copy_selection(&mut self.app, &mut self.clipboard);
             }
             Action::CutSelection => {
-                let text = self.app.copy_selection_to_string_and_store();
-                let count = text.lines().count();
-                let ok = <SystemClipboard as ClipboardProvider>::set_text(
-                    &mut self.clipboard,
-                    text.clone(),
-                );
-                self.app.clear_selection();
-                if ok {
-                    self.app.status = format!("✓ Cut {} cells", count.max(1));
-                } else {
-                    self.app.status = "✗ Cut failed: clipboard unavailable".to_string();
-                }
+                handle_cut_selection(&mut self.app, &mut self.clipboard);
             }
             Action::Paste(text) => {
                 // If text is provided (from egui paste event), use it directly
@@ -83,9 +96,7 @@ impl GridlineGuiApp {
                     let _ = self.app.paste_from_clipboard(text);
                 } else {
                     // Otherwise try to read from system clipboard
-                    if let Some(clipboard_text) =
-                        <SystemClipboard as ClipboardProvider>::get_text(&mut self.clipboard)
-                    {
+                    if let Some(clipboard_text) = self.clipboard.get_text() {
                         let _ = self.app.paste_from_clipboard(clipboard_text);
                     } else {
                         self.app.status = "✗ Paste failed: clipboard empty".to_string();
@@ -144,6 +155,65 @@ impl GridlineGuiApp {
                 apply_action(&mut self.app, &mut self.state, action);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gridline_core::{CellRef, Document};
+
+    struct TestClipboard {
+        text: Option<String>,
+        set_ok: bool,
+    }
+
+    impl ClipboardProvider for TestClipboard {
+        fn get_text(&mut self) -> Option<String> {
+            self.text.clone()
+        }
+
+        fn set_text(&mut self, text: String) -> bool {
+            if self.set_ok {
+                self.text = Some(text);
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    #[test]
+    fn test_cut_does_not_clear_selection_when_clipboard_fails() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "42").unwrap();
+        let mut app = GuiApp::new(doc);
+        let mut clipboard = TestClipboard {
+            text: None,
+            set_ok: false,
+        };
+
+        handle_cut_selection(&mut app, &mut clipboard);
+
+        assert_eq!(app.cell_input_string(&CellRef::new(0, 0)), "42");
+        assert_eq!(app.status, "✗ Cut failed: clipboard unavailable");
+    }
+
+    #[test]
+    fn test_cut_clears_selection_when_clipboard_succeeds() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "42").unwrap();
+        let mut app = GuiApp::new(doc);
+        let mut clipboard = TestClipboard {
+            text: None,
+            set_ok: true,
+        };
+
+        handle_cut_selection(&mut app, &mut clipboard);
+
+        assert_eq!(app.cell_input_string(&CellRef::new(0, 0)), "");
+        assert_eq!(app.status, "✓ Cut 1 cell");
+        assert_eq!(clipboard.text.as_deref(), Some("42"));
     }
 }
 
