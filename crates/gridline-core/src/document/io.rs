@@ -6,6 +6,7 @@ use gridline_engine::engine::CellType;
 use std::path::{Path, PathBuf};
 
 const MAX_FUNCTION_FILE_BYTES: u64 = 1_048_576; // 1 MiB
+const MAX_TOTAL_FUNCTION_SCRIPT_BYTES: usize = (2 * MAX_FUNCTION_FILE_BYTES as usize) + 2;
 
 fn read_functions_file(path: &Path) -> Result<String> {
     let meta = std::fs::metadata(path)?;
@@ -23,12 +24,41 @@ fn read_functions_file(path: &Path) -> Result<String> {
     Ok(std::fs::read_to_string(path)?)
 }
 
+fn ensure_total_functions_script_size(size: usize) -> Result<()> {
+    if size > MAX_TOTAL_FUNCTION_SCRIPT_BYTES {
+        return Err(GridlineError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Refusing to load functions: combined script too large ({} bytes, max {})",
+                size, MAX_TOTAL_FUNCTION_SCRIPT_BYTES
+            ),
+        )));
+    }
+    Ok(())
+}
+
+fn checked_combined_script_size(current: usize, next: usize, needs_separator: bool) -> Result<usize> {
+    let separator_len = if needs_separator { 2usize } else { 0usize };
+    let total = current
+        .checked_add(separator_len)
+        .and_then(|v| v.checked_add(next))
+        .ok_or_else(|| {
+            GridlineError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Refusing to load functions: combined script size overflowed",
+            ))
+        })?;
+    ensure_total_functions_script_size(total)?;
+    Ok(total)
+}
+
 impl Document {
     /// Load custom Rhai functions from a file (appends to existing functions).
     /// Returns the path loaded, or an error.
     pub fn load_functions(&mut self, path: &Path) -> Result<PathBuf> {
         let path_buf = std::fs::canonicalize(path)?;
         let content = read_functions_file(&path_buf)?;
+        ensure_total_functions_script_size(content.len())?;
 
         if self.functions_files.contains(&path_buf) {
             // Already loaded: keep current compiled state unchanged.
@@ -39,6 +69,7 @@ impl Document {
         new_functions_files.push(path_buf.clone());
 
         let new_custom_functions = if let Some(existing) = &self.custom_functions {
+            checked_combined_script_size(existing.len(), content.len(), true)?;
             format!("{}\n\n{}", existing, content)
         } else {
             content
@@ -74,6 +105,7 @@ impl Document {
         let mut merged = String::new();
         for (idx, path) in paths.iter().enumerate() {
             let content = read_functions_file(path)?;
+            checked_combined_script_size(merged.len(), content.len(), idx > 0)?;
             if idx > 0 {
                 merged.push_str("\n\n");
             }
@@ -336,6 +368,64 @@ mod tests {
                 assert!(io_err.to_string().contains("too large"));
             }
             other => panic!("expected io error for oversized file, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_load_functions_rejects_oversized_combined_script() {
+        let mut doc = Document::new();
+
+        let path1 = std::env::temp_dir().join(format!(
+            "gridline_funcs_combined_1_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        let path2 = std::env::temp_dir().join(format!(
+            "gridline_funcs_combined_2_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        let path3 = std::env::temp_dir().join(format!(
+            "gridline_funcs_combined_3_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+                let _ = std::fs::remove_file(&self.1);
+                let _ = std::fs::remove_file(&self.2);
+            }
+        }
+        let _cleanup = Cleanup(path1.clone(), path2.clone(), path3.clone());
+
+        let content = " ".repeat(MAX_FUNCTION_FILE_BYTES as usize);
+        std::fs::write(&path1, &content).unwrap();
+        std::fs::write(&path2, &content).unwrap();
+        std::fs::write(&path3, " ").unwrap();
+
+        doc.load_functions(&path1).unwrap();
+        doc.load_functions(&path2).unwrap();
+
+        let err = doc.load_functions(&path3).unwrap_err();
+        match err {
+            GridlineError::Io(io_err) => {
+                assert!(io_err.to_string().contains("combined script too large"));
+            }
+            other => panic!("expected io error for oversized combined script, got {other:?}"),
         }
     }
 
