@@ -167,17 +167,17 @@ mod tests {
     fn test_detect_cycle_direct() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("B1"));
-        grid.insert(CellRef::new(0, 1), Cell::new_script("A1"));
+        grid.insert(CellRef::new(1, 0), Cell::new_script("A1"));
 
         assert!(detect_cycle(&CellRef::new(0, 0), &grid).is_some());
-        assert!(detect_cycle(&CellRef::new(0, 1), &grid).is_some());
+        assert!(detect_cycle(&CellRef::new(1, 0), &grid).is_some());
     }
 
     #[test]
     fn test_detect_cycle_indirect() {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         grid.insert(CellRef::new(0, 0), Cell::new_script("B1"));
-        grid.insert(CellRef::new(0, 1), Cell::new_script("C1"));
+        grid.insert(CellRef::new(1, 0), Cell::new_script("C1"));
         grid.insert(CellRef::new(2, 0), Cell::new_script("A1"));
 
         let cycle = detect_cycle(&CellRef::new(0, 0), &grid);
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(deps.len(), 3);
         assert!(deps.contains(&CellRef::new(0, 0)));
         assert!(deps.contains(&CellRef::new(0, 1)));
-        assert!(deps.contains(&CellRef::new(2, 0)));
+        assert!(deps.contains(&CellRef::new(0, 2)));
     }
 
     #[test]

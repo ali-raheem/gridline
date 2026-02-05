@@ -97,7 +97,6 @@ impl Document {
     /// The script can use:
     /// - All read builtins (CELL, VALUE, SUM_RANGE, PARSE_CELL, etc.)
     /// - Write builtins (SET_CELL, CLEAR_CELL, SET_RANGE, CLEAR_RANGE)
-
     /// - Context variables (CURSOR_ROW, CURSOR_COL, HAS_SELECTION, SEL_R1, etc.)
     ///
     /// All modifications are collected into a single batch undo entry.
@@ -131,8 +130,7 @@ impl Document {
             &full_script,
             custom_ast
                 .as_ref()
-                .map(|_| self.custom_functions.as_deref())
-                .flatten(),
+                .and(self.custom_functions.as_deref()),
         );
 
         let return_value = match &result {
@@ -311,10 +309,10 @@ mod tests {
         )
         .unwrap();
 
-        // Verify cells
+        // Verify selected range A1:A3 (col, row ordering).
         let cell0 = doc.grid.get(&CellRef::new(0, 0)).unwrap();
-        let cell1 = doc.grid.get(&CellRef::new(1, 0)).unwrap();
-        let cell2 = doc.grid.get(&CellRef::new(2, 0)).unwrap();
+        let cell1 = doc.grid.get(&CellRef::new(0, 1)).unwrap();
+        let cell2 = doc.grid.get(&CellRef::new(0, 2)).unwrap();
 
         assert!(
             matches!(cell0.contents, gridline_engine::engine::CellType::Number(n) if (n - 1.0).abs() < 0.001)

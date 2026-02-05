@@ -147,6 +147,7 @@ fn render_plot_ascii<W: Write>(
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::write_markdown;
     use crate::document::Document;
@@ -272,8 +273,8 @@ fn render_line_chart<W: Write>(w: &mut W, data: &PlotData) -> std::io::Result<()
     for row in (0..height).rev() {
         let y_val = y_min + (row as f32 / (height - 1) as f32) * y_range;
         write!(w, "{:>6.1} |", y_val)?;
-        for col in 0..width {
-            write!(w, "{}", grid[row][col])?;
+        for ch in grid[row].iter().take(width) {
+            write!(w, "{}", ch)?;
         }
         writeln!(w)?;
     }
@@ -321,8 +322,8 @@ fn render_scatter_chart<W: Write>(w: &mut W, data: &PlotData) -> std::io::Result
     for row in (0..height).rev() {
         let y_val = y_min + (row as f32 / (height - 1) as f32) * y_range;
         write!(w, "{:>6.1} |", y_val)?;
-        for col in 0..width {
-            write!(w, "{}", grid[row][col])?;
+        for ch in grid[row].iter().take(width) {
+            write!(w, "{}", ch)?;
         }
         writeln!(w)?;
     }

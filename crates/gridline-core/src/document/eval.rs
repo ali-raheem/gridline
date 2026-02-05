@@ -70,12 +70,11 @@ impl Document {
                         // Show first 50 chars of error for debugging (UTF-8 safe)
                         let mut chars = e.chars();
                         let prefix: String = chars.by_ref().take(50).collect();
-                        let err_msg = if chars.next().is_some() {
+                        if chars.next().is_some() {
                             format!("#ERR: {}...", prefix)
                         } else {
                             format!("#ERR: {}", prefix)
-                        };
-                        err_msg
+                        }
                     }
                 }
             }
@@ -212,12 +211,12 @@ impl Document {
 
             // For each cell that depends on this one, decrement its in-degree
             for (other_cell, deps) in &cell_deps {
-                if deps.contains(&cell_ref) {
-                    if let Some(count) = in_degree.get_mut(other_cell) {
-                        *count = count.saturating_sub(1);
-                        if *count == 0 && !eval_order.contains(other_cell) {
-                            queue.push_back(other_cell.clone());
-                        }
+                if deps.contains(&cell_ref)
+                    && let Some(count) = in_degree.get_mut(other_cell)
+                {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 && !eval_order.contains(other_cell) {
+                        queue.push_back(other_cell.clone());
                     }
                 }
             }

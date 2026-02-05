@@ -57,25 +57,25 @@ pub fn load_keymap(
         .map(|s| s.as_str());
     let target = requested_name.or(default_name).unwrap_or("vim");
 
-    if let Some(file) = file.as_ref() {
-        if let Some(keymaps) = file.keymaps.as_ref() {
-            if let Some(entry) = keymaps.get(target) {
-                match build_custom_keymap(target, entry) {
-                    Ok(custom) => return (Keymap::Custom(custom), warnings),
-                    Err(errs) => {
-                        warnings.extend(errs);
-                    }
+    if let Some(file) = file.as_ref()
+        && let Some(keymaps) = file.keymaps.as_ref()
+    {
+        if let Some(entry) = keymaps.get(target) {
+            match build_custom_keymap(target, entry) {
+                Ok(custom) => return (Keymap::Custom(custom), warnings),
+                Err(errs) => {
+                    warnings.extend(errs);
                 }
-            } else if requested_name.is_some() {
-                warnings.push(format!(
-                    "Keymap '{}' not found in {}",
-                    target,
-                    config_path
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "keymaps.toml".to_string())
-                ));
             }
+        } else if requested_name.is_some() {
+            warnings.push(format!(
+                "Keymap '{}' not found in {}",
+                target,
+                config_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "keymaps.toml".to_string())
+            ));
         }
     }
 
@@ -163,8 +163,7 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
 
     let (mods, key_part) = if !trimmed.contains('-') {
         (KeyModifiers::empty(), trimmed)
-    } else if trimmed.ends_with('-') {
-        let mod_str = &trimmed[..trimmed.len() - 1];
+    } else if let Some(mod_str) = trimmed.strip_suffix('-') {
         let modifiers = parse_modifiers(mod_str)?;
         (modifiers, "-")
     } else {

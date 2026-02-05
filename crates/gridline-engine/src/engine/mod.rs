@@ -36,7 +36,8 @@ pub use eval::{
 pub use eval::{create_engine_with_functions_and_spill, create_engine_with_spill};
 pub use format::{format_dynamic, format_number};
 pub use preprocess::{
-    ShiftOperation, preprocess_script, preprocess_script_with_context, shift_formula_references,
+    ShiftOperation, offset_formula_references, preprocess_script, preprocess_script_with_context,
+    shift_formula_references,
 };
 
 pub use rhai::{AST, Dynamic};

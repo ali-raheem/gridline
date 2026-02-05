@@ -30,6 +30,7 @@ pub(crate) fn parse_csv_line(line: &str) -> Vec<String> {
     let mut fields = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
+    let mut field_was_quoted = false;
     let mut chars = line.chars().peekable();
 
     while let Some(c) = chars.next() {
@@ -47,16 +48,28 @@ pub(crate) fn parse_csv_line(line: &str) -> Vec<String> {
             }
         } else {
             match c {
-                '"' => in_quotes = true,
+                '"' => {
+                    in_quotes = true;
+                    field_was_quoted = true;
+                }
                 ',' => {
-                    fields.push(current.trim().to_string());
+                    if field_was_quoted {
+                        fields.push(current.clone());
+                    } else {
+                        fields.push(current.trim().to_string());
+                    }
                     current = String::new();
+                    field_was_quoted = false;
                 }
                 _ => current.push(c),
             }
         }
     }
-    fields.push(current.trim().to_string());
+    if field_was_quoted {
+        fields.push(current);
+    } else {
+        fields.push(current.trim().to_string());
+    }
     fields
 }
 
@@ -65,10 +78,15 @@ pub(crate) fn parse_csv_line(line: &str) -> Vec<String> {
 /// - Valid number -> Number (unless it has leading zeros like "007")
 /// - Otherwise -> Text
 pub(crate) fn parse_csv_field(field: &str) -> Cell {
-    let trimmed = field.trim();
-
-    if trimmed.is_empty() {
+    if field.is_empty() {
         return Cell::new_empty();
+    }
+
+    // Keep explicit surrounding whitespace (typically from quoted CSV fields).
+    // This preserves values like "  hello  " exactly as text.
+    let trimmed = field.trim();
+    if field != trimmed {
+        return Cell::new_text(field);
     }
 
     // Preserve strings that look like numbers but have leading zeros (e.g., "007", "00123")
@@ -76,11 +94,7 @@ pub(crate) fn parse_csv_field(field: &str) -> Cell {
     if trimmed.starts_with('0')
         && trimmed.len() > 1
         && !trimmed.starts_with("0.")
-        && trimmed
-            .chars()
-            .skip(1)
-            .next()
-            .map_or(false, |c| c.is_ascii_digit())
+        && trimmed.chars().nth(1).is_some_and(|c| c.is_ascii_digit())
     {
         return Cell::new_text(trimmed);
     }
@@ -149,10 +163,21 @@ pub fn write_csv(
 
 /// Escape a field for CSV output
 fn escape_csv_field(field: &str) -> String {
-    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
-        format!("\"{}\"", field.replace('"', "\"\""))
+    // Guard against CSV formula injection in spreadsheet apps.
+    let safe_field = if matches!(field.chars().next(), Some('=' | '+' | '-' | '@')) {
+        format!("'{}", field)
     } else {
         field.to_string()
+    };
+
+    if safe_field.contains(',')
+        || safe_field.contains('"')
+        || safe_field.contains('\n')
+        || safe_field.contains('\r')
+    {
+        format!("\"{}\"", safe_field.replace('"', "\"\""))
+    } else {
+        safe_field
     }
 }
 
@@ -171,6 +196,14 @@ mod tests {
         assert_eq!(
             parse_csv_line(r#"a,"hello, world",c"#),
             vec!["a", "hello, world", "c"]
+        );
+    }
+
+    #[test]
+    fn test_parse_csv_line_quoted_preserves_whitespace() {
+        assert_eq!(
+            parse_csv_line(r#""  keep me  ",x"#),
+            vec!["  keep me  ", "x"]
         );
     }
 
@@ -207,6 +240,14 @@ mod tests {
     fn test_parse_csv_field_zero() {
         let cell = parse_csv_field("0");
         assert!(matches!(cell.contents, gridline_engine::engine::CellType::Number(n) if n == 0.0));
+    }
+
+    #[test]
+    fn test_parse_csv_field_preserves_surrounding_whitespace() {
+        let cell = parse_csv_field("  keep me  ");
+        assert!(
+            matches!(cell.contents, gridline_engine::engine::CellType::Text(ref s) if s == "  keep me  ")
+        );
     }
 
     #[test]
@@ -321,5 +362,34 @@ mod tests {
         let contents = std::fs::read_to_string(output_path).unwrap();
         let lines: Vec<&str> = contents.lines().collect();
         assert_eq!(lines, vec!["2", "3", "4"]);
+    }
+
+    #[test]
+    fn test_escape_csv_formula_injection_prefixes_value() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "\"=1+1\"")
+            .unwrap();
+
+        let output_path = std::env::temp_dir().join(format!(
+            "gridline_export_formula_safety_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(output_path.clone());
+
+        write_csv(&output_path, &mut core, None).unwrap();
+        let contents = std::fs::read_to_string(output_path).unwrap();
+        assert_eq!(contents.trim_end(), "'=1+1");
     }
 }

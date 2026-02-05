@@ -70,6 +70,56 @@ pub fn shift_formula_references(formula: &str, op: ShiftOperation) -> String {
     restored
 }
 
+/// Offset all cell references in a formula by a relative column/row delta.
+/// Used by copy/paste so pasted formulas preserve relative references.
+///
+/// Rules:
+/// - `A1` offset by (+1, +2) becomes `B3`
+/// - `@A1` offset by (+1, +2) becomes `@B3`
+/// - range refs are offset on both ends: `SUM(A1:B2)` -> `SUM(B3:C4)`
+/// - refs that move out of bounds become `#REF!`
+pub fn offset_formula_references(formula: &str, delta_col: isize, delta_row: isize) -> String {
+    if delta_col == 0 && delta_row == 0 {
+        return formula.to_string();
+    }
+
+    let mut replacements: Vec<String> = Vec::new();
+    let with_placeholders = crate::builtins::range_fn_re()
+        .replace_all(formula, |caps: &regex::Captures| {
+            let func_name = &caps[1];
+            let start_ref = &caps[2];
+            let end_ref = &caps[3];
+            let rest_args = caps.get(4).map(|m| m.as_str()).unwrap_or("");
+
+            let new_start = offset_single_ref(start_ref, delta_col, delta_row);
+            let new_end = offset_single_ref(end_ref, delta_col, delta_row);
+
+            let idx = replacements.len();
+            if new_start == "#REF!" || new_end == "#REF!" {
+                replacements.push("#REF!".to_string());
+            } else {
+                replacements.push(format!(
+                    "{}({}:{}{})",
+                    func_name, new_start, new_end, rest_args
+                ));
+            }
+            format!("@@@{}@@@", idx)
+        })
+        .to_string();
+
+    let shifted = offset_cell_refs_outside_strings(&with_placeholders, delta_col, delta_row);
+    if replacements.is_empty() {
+        return shifted;
+    }
+
+    let mut restored = shifted;
+    for (idx, replacement) in replacements.into_iter().enumerate() {
+        let placeholder = format!("@@@{}@@@", idx);
+        restored = restored.replace(&placeholder, &replacement);
+    }
+    restored
+}
+
 fn shift_single_ref(cell_ref_str: &str, op: ShiftOperation) -> String {
     let Some(cr) = CellRef::from_str(cell_ref_str) else {
         return cell_ref_str.to_string();
@@ -111,31 +161,58 @@ fn shift_single_ref(cell_ref_str: &str, op: ShiftOperation) -> String {
     }
 }
 
+fn offset_single_ref(cell_ref_str: &str, delta_col: isize, delta_row: isize) -> String {
+    let Some(cr) = CellRef::from_str(cell_ref_str) else {
+        return cell_ref_str.to_string();
+    };
+
+    let new_col = cr.col as isize + delta_col;
+    let new_row = cr.row as isize + delta_row;
+    if new_col < 0 || new_row < 0 {
+        return "#REF!".to_string();
+    }
+
+    CellRef::new(new_col as usize, new_row as usize).to_string()
+}
+
 fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
     let cell_re = Regex::new(r"\b([A-Za-z]+)([0-9]+)\b").unwrap();
     let value_re = Regex::new(r"@([A-Za-z]+)([0-9]+)\b").unwrap();
 
     let shift_cells = |seg: &str| {
-        // First handle @-prefixed refs (value refs)
+        // First handle @-prefixed refs using placeholders to avoid double-shifting.
+        let mut value_refs: Vec<String> = Vec::new();
         let seg = value_re
             .replace_all(seg, |caps: &regex::Captures| {
                 let cell_ref = format!("{}{}", &caps[1], &caps[2]);
                 let shifted = shift_single_ref(&cell_ref, op);
+                let idx = value_refs.len();
                 if shifted == "#REF!" {
-                    shifted
+                    value_refs.push(shifted);
                 } else {
-                    format!("@{}", shifted)
+                    value_refs.push(format!("@{}", shifted));
                 }
+                format!("__VALUE_REF_{}__", idx)
             })
             .to_string();
 
         // Then handle regular refs
-        cell_re
+        let shifted = cell_re
             .replace_all(&seg, |caps: &regex::Captures| {
                 let cell_ref = format!("{}{}", &caps[1], &caps[2]);
                 shift_single_ref(&cell_ref, op)
             })
-            .to_string()
+            .to_string();
+
+        if value_refs.is_empty() {
+            return shifted;
+        }
+
+        let mut restored = shifted;
+        for (idx, value_ref) in value_refs.into_iter().enumerate() {
+            restored = restored.replace(&format!("__VALUE_REF_{}__", idx), &value_ref);
+        }
+        restored
     };
 
     // Process outside of string literals
@@ -154,7 +231,7 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
                 i += 1;
                 continue;
             }
-            if b == b'"' && backslashes % 2 == 0 {
+            if b == b'"' && backslashes.is_multiple_of(2) {
                 out.push_str(&script[seg_start..=i]);
                 in_string = false;
                 seg_start = i + 1;
@@ -187,37 +264,98 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
     out
 }
 
+fn offset_cell_refs_outside_strings(script: &str, delta_col: isize, delta_row: isize) -> String {
+    let cell_re = Regex::new(r"\b([A-Za-z]+)([0-9]+)\b").unwrap();
+    let value_re = Regex::new(r"@([A-Za-z]+)([0-9]+)\b").unwrap();
+
+    let offset_cells = |seg: &str| {
+        let mut value_refs: Vec<String> = Vec::new();
+        let seg = value_re
+            .replace_all(seg, |caps: &regex::Captures| {
+                let cell_ref = format!("{}{}", &caps[1], &caps[2]);
+                let shifted = offset_single_ref(&cell_ref, delta_col, delta_row);
+                let idx = value_refs.len();
+                if shifted == "#REF!" {
+                    value_refs.push(shifted);
+                } else {
+                    value_refs.push(format!("@{}", shifted));
+                }
+                format!("__VALUE_REF_{}__", idx)
+            })
+            .to_string();
+
+        let shifted = cell_re
+            .replace_all(&seg, |caps: &regex::Captures| {
+                let cell_ref = format!("{}{}", &caps[1], &caps[2]);
+                offset_single_ref(&cell_ref, delta_col, delta_row)
+            })
+            .to_string();
+
+        if value_refs.is_empty() {
+            return shifted;
+        }
+
+        let mut restored = shifted;
+        for (idx, value_ref) in value_refs.into_iter().enumerate() {
+            restored = restored.replace(&format!("__VALUE_REF_{}__", idx), &value_ref);
+        }
+        restored
+    };
+
+    // Process outside of string literals
+    let bytes = script.as_bytes();
+    let mut out = String::new();
+    let mut seg_start = 0;
+    let mut in_string = false;
+    let mut backslashes = 0usize;
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if b == b'\\' {
+                backslashes += 1;
+                i += 1;
+                continue;
+            }
+            if b == b'"' && backslashes.is_multiple_of(2) {
+                out.push_str(&script[seg_start..=i]);
+                in_string = false;
+                seg_start = i + 1;
+            }
+            backslashes = 0;
+            i += 1;
+            continue;
+        }
+
+        if b == b'"' {
+            out.push_str(&offset_cells(&script[seg_start..i]));
+            in_string = true;
+            seg_start = i;
+            backslashes = 0;
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    if seg_start < script.len() {
+        if in_string {
+            out.push_str(&script[seg_start..]);
+        } else {
+            out.push_str(&offset_cells(&script[seg_start..]));
+        }
+    }
+
+    out
+}
+
 /// Replace cell references like "A1" with Rhai function calls like "CELL(0, 0)".
 /// Typed refs like "@A1" become "VALUE(0, 0)" (returns Dynamic).
 /// Also transforms range functions like SUM(A1:B5, ...) into SUM_RANGE(0, 0, 1, 4, ...).
 pub fn preprocess_script(script: &str) -> String {
     preprocess_script_with_context(script, None)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_shift_formula_references_preserves_paren() {
-        let formula = "VEC(A1:A100)";
-        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
-        assert_eq!(shifted, "VEC(B1:B100)");
-    }
-
-    #[test]
-    fn test_shift_formula_references_mixed_range_and_cell() {
-        let formula = "SUM(A1:A3) + B1";
-        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
-        assert_eq!(shifted, "SUM(B1:B3) + C1");
-    }
-
-    #[test]
-    fn test_shift_formula_references_vec_and_cell() {
-        let formula = "VEC(A1:A10) + B1";
-        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
-        assert_eq!(shifted, "VEC(B1:B10) + C1");
-    }
 }
 
 /// Preprocess script with optional current cell context for ROW()/COL().
@@ -342,4 +480,44 @@ fn replace_cell_refs_outside_strings(script: &str) -> String {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shift_formula_references_preserves_paren() {
+        let formula = "VEC(A1:A100)";
+        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
+        assert_eq!(shifted, "VEC(B1:B100)");
+    }
+
+    #[test]
+    fn test_shift_formula_references_mixed_range_and_cell() {
+        let formula = "SUM(A1:A3) + B1";
+        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
+        assert_eq!(shifted, "SUM(B1:B3) + C1");
+    }
+
+    #[test]
+    fn test_shift_formula_references_vec_and_cell() {
+        let formula = "VEC(A1:A10) + B1";
+        let shifted = shift_formula_references(formula, ShiftOperation::InsertColumn(0));
+        assert_eq!(shifted, "VEC(B1:B10) + C1");
+    }
+
+    #[test]
+    fn test_offset_formula_references_positive_delta() {
+        let formula = "SUM(A1:B2) + @C3 + D4";
+        let shifted = offset_formula_references(formula, 1, 2);
+        assert_eq!(shifted, "SUM(B3:C4) + @D5 + E6");
+    }
+
+    #[test]
+    fn test_offset_formula_references_out_of_bounds() {
+        let formula = "A1 + @B2";
+        let shifted = offset_formula_references(formula, -1, 0);
+        assert_eq!(shifted, "#REF! + @A2");
+    }
 }

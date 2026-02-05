@@ -1,6 +1,8 @@
 use super::{Document, UndoAction, UndoEntry};
 use crate::error::{GridlineError, Result};
-use gridline_engine::engine::{Cell, CellRef, CellType, ShiftOperation, shift_formula_references};
+use gridline_engine::engine::{
+    Cell, CellRef, CellType, ShiftOperation, offset_formula_references, shift_formula_references,
+};
 
 /// Dimension for row/column operations
 #[derive(Copy, Clone)]
@@ -59,6 +61,29 @@ impl Document {
                 entry.cached_value = None;
             }
         }
+    }
+
+    /// Prepare a cell position for overwrite by clearing stale spill/cache state.
+    /// Returns any spill source that was invalidated so dependents can be dirtied.
+    fn prepare_overwrite(&mut self, cell_ref: &CellRef) -> Option<CellRef> {
+        // If writing into a spill output, invalidate the source spill and force source re-eval.
+        let spilled_from = self.spill_sources.get(cell_ref).cloned();
+        if let Some(source) = &spilled_from {
+            self.clear_spill_from(source);
+            if let Some(mut src_cell) = self.grid.get_mut(source) {
+                src_cell.dirty = true;
+                src_cell.cached_value = None;
+            }
+        }
+
+        // If this position is itself a spill source, clear its old spill output.
+        self.clear_spill_from(cell_ref);
+
+        // Also remove direct stale entries at this exact position.
+        self.spill_sources.remove(cell_ref);
+        self.value_cache.remove(cell_ref);
+
+        spilled_from
     }
 
     /// Push an undo action before modifying a cell
@@ -455,14 +480,31 @@ impl Document {
         &mut self,
         base_col: usize,
         base_row: usize,
+        source_base_col: usize,
+        source_base_row: usize,
         clipboard_cells: &[(usize, usize, Cell)],
     ) -> usize {
+        let delta_col = base_col as isize - source_base_col as isize;
+        let delta_row = base_row as isize - source_base_row as isize;
         let mut pasted_cells = Vec::new();
+        let mut additionally_dirty = Vec::new();
+
         for (rel_col, rel_row, cell) in clipboard_cells {
             let target = CellRef::new(base_col + rel_col, base_row + rel_row);
+            if let Some(spill_source) = self.prepare_overwrite(&target) {
+                additionally_dirty.push(spill_source);
+            }
 
-            self.push_undo(target.clone(), Some(cell.clone()));
-            self.grid.insert(target.clone(), cell.clone());
+            let pasted_cell = match &cell.contents {
+                CellType::Script(formula) => {
+                    let shifted = offset_formula_references(formula, delta_col, delta_row);
+                    Cell::new_script(&shifted)
+                }
+                _ => cell.clone(),
+            };
+
+            self.push_undo(target.clone(), Some(pasted_cell.clone()));
+            self.grid.insert(target.clone(), pasted_cell);
             pasted_cells.push(target);
         }
 
@@ -479,6 +521,9 @@ impl Document {
         for cell_ref in &pasted_cells {
             self.mark_dependents_dirty(cell_ref);
         }
+        for spill_source in additionally_dirty {
+            self.mark_dependents_dirty(&spill_source);
+        }
 
         count
     }
@@ -487,7 +532,7 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::Document;
-    use gridline_engine::engine::CellRef;
+    use gridline_engine::engine::{CellRef, CellType};
 
     #[test]
     fn test_delete_column_clears_spill_state() {
@@ -535,5 +580,45 @@ mod tests {
         assert_eq!(display, "#SPILL!");
         assert!(!core.spill_sources.contains_key(&spill_cell));
         assert!(!core.value_cache.contains_key(&spill_cell));
+    }
+
+    #[test]
+    fn test_paste_over_spill_source_clears_spill_and_invalidates_dependents() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "=SPILL(1..=3)")
+            .unwrap(); // A1 source
+        core.set_cell_from_input(CellRef::new(2, 0), "=A1").unwrap(); // C1 depends on A1
+        core.set_cell_from_input(CellRef::new(1, 0), "99").unwrap(); // B1 source for paste
+
+        // Populate spill/cache state.
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+        assert!(core.spill_sources.contains_key(&CellRef::new(0, 1)));
+        assert!(core.value_cache.contains_key(&CellRef::new(0, 1)));
+
+        // Paste B1 onto A1.
+        let cell = core.grid.get(&CellRef::new(1, 0)).unwrap().clone();
+        let pasted = core.paste_cells(0, 0, 1, 0, &[(0, 0, cell)]);
+        assert_eq!(pasted, 1);
+
+        // Spill state must be removed and dependents must observe new value.
+        assert!(!core.spill_sources.contains_key(&CellRef::new(0, 1)));
+        assert!(!core.value_cache.contains_key(&CellRef::new(0, 1)));
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "99");
+        assert_eq!(core.get_cell_display(&CellRef::new(2, 0)), "99");
+    }
+
+    #[test]
+    fn test_paste_shifts_formula_references_by_offset() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "=B1").unwrap(); // A1
+
+        let cell = core.grid.get(&CellRef::new(0, 0)).unwrap().clone();
+        core.paste_cells(0, 1, 0, 0, &[(0, 0, cell)]); // paste to A2
+
+        let pasted = core.grid.get(&CellRef::new(0, 1)).unwrap();
+        match &pasted.contents {
+            CellType::Script(s) => assert_eq!(s, "B2"),
+            _ => panic!("Expected script cell"),
+        }
     }
 }

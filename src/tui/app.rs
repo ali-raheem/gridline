@@ -20,6 +20,11 @@ pub struct Clipboard {
     /// Position is relative to top-left of selection
     pub cells: Vec<(usize, usize, Cell)>,
 
+    /// Source top-left column when yanking.
+    pub source_col: usize,
+    /// Source top-left row when yanking.
+    pub source_row: usize,
+
     /// Original selection dimensions (kept for potential future paste-repeat feature)
     #[allow(dead_code)]
     pub width: usize,
@@ -168,6 +173,7 @@ impl App {
     }
 
     /// Create a new application with an existing Document instance
+    #[allow(dead_code)]
     pub fn new_with_core(core: Document, keymap: Keymap) -> Self {
         let mut app = Self::new();
         app.core = core;
@@ -391,6 +397,8 @@ impl App {
             let width = c2 - c1 + 1;
             self.clipboard = Some(Clipboard {
                 cells,
+                source_col: c1,
+                source_row: r1,
                 width,
                 height,
             });
@@ -414,6 +422,8 @@ impl App {
             }
             self.clipboard = Some(Clipboard {
                 cells,
+                source_col: cell_ref.col,
+                source_row: cell_ref.row,
                 width: 1,
                 height: 1,
             });
@@ -430,7 +440,13 @@ impl App {
 
         let base_row = self.cursor_row;
         let base_col = self.cursor_col;
-        let pasted = self.core.paste_cells(base_col, base_row, &clipboard.cells);
+        let pasted = self.core.paste_cells(
+            base_col,
+            base_row,
+            clipboard.source_col,
+            clipboard.source_row,
+            &clipboard.cells,
+        );
 
         self.status_message = format!("Pasted {} cells", pasted);
     }

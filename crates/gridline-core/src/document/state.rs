@@ -66,7 +66,7 @@ impl Document {
         let (engine, _, _) =
             create_engine_with_functions_and_cache(grid.clone(), value_cache.clone(), None);
 
-        let core = Document {
+        Document {
             grid,
             engine,
             file_path: None,
@@ -79,18 +79,16 @@ impl Document {
             value_cache,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-        };
-
-        core
+        }
     }
 
     /// Create a new document and load a file if provided.
     pub fn with_file(path: Option<PathBuf>, functions_files: Vec<PathBuf>) -> Result<Self> {
         let mut core = Self::new();
 
-        // Load custom functions if specified (ignore errors during init)
+        // Load custom functions if specified.
         for func_path in &functions_files {
-            let _ = core.load_functions(func_path);
+            core.load_functions(func_path)?;
         }
 
         if let Some(ref p) = path {

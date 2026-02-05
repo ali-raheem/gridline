@@ -22,18 +22,16 @@ fn run_command_mode(
     let mut doc = Document::new();
 
     // Load default functions (if present)
-    if !no_default_functions {
-        if let Some(path) = default_functions::default_functions_path() {
-            if path.is_file() {
-                if let Err(e) = doc.load_functions(&path) {
-                    eprintln!(
-                        "Warning: failed to load default functions from {}: {}",
-                        path.display(),
-                        e
-                    );
-                }
-            }
-        }
+    if !no_default_functions
+        && let Some(path) = default_functions::default_functions_path()
+        && path.is_file()
+        && let Err(e) = doc.load_functions(&path)
+    {
+        eprintln!(
+            "Warning: failed to load default functions from {}: {}",
+            path.display(),
+            e
+        );
     }
 
     // Load custom functions
@@ -226,18 +224,16 @@ fn try_main() -> Result<ExitCode> {
             Document::with_file(file_path, Vec::new()).context("failed to initialize document")?;
 
         // Autoload default functions first, then user-specified functions.
-        if !no_default_functions {
-            if let Some(path) = default_functions::default_functions_path() {
-                if path.is_file() {
-                    if let Err(e) = doc.load_functions(&path) {
-                        eprintln!(
-                            "Warning: failed to load default functions from {}: {}",
-                            path.display(),
-                            e
-                        );
-                    }
-                }
-            }
+        if !no_default_functions
+            && let Some(path) = default_functions::default_functions_path()
+            && path.is_file()
+            && let Err(e) = doc.load_functions(&path)
+        {
+            eprintln!(
+                "Warning: failed to load default functions from {}: {}",
+                path.display(),
+                e
+            );
         }
         for func_path in &functions_files {
             if let Err(e) = doc.load_functions(func_path) {
@@ -275,7 +271,7 @@ fn try_main() -> Result<ExitCode> {
         };
 
         tui::run(&mut app).context("TUI crashed")?;
-        return Ok(ExitCode::SUCCESS);
+        Ok(ExitCode::SUCCESS)
     }
 
     #[cfg(not(feature = "tui"))]

@@ -9,6 +9,24 @@ use rhai::{Engine, EvalAltResult};
 use super::{AST, Dynamic, Grid, ValueCache};
 use crate::builtins::ScriptModifications;
 
+const MAX_SCRIPT_OPERATIONS: u64 = 5_000_000;
+const MAX_CALL_LEVELS: usize = 64;
+const MAX_EXPR_DEPTH: usize = 64;
+const MAX_FUNCTION_EXPR_DEPTH: usize = 32;
+const MAX_ARRAY_SIZE: usize = 100_000;
+const MAX_STRING_SIZE: usize = 1_000_000;
+const MAX_VARIABLES: usize = 10_000;
+
+fn configure_engine_limits(engine: &mut Engine) {
+    engine
+        .set_max_operations(MAX_SCRIPT_OPERATIONS)
+        .set_max_call_levels(MAX_CALL_LEVELS)
+        .set_max_expr_depths(MAX_EXPR_DEPTH, MAX_FUNCTION_EXPR_DEPTH)
+        .set_max_array_size(MAX_ARRAY_SIZE)
+        .set_max_string_size(MAX_STRING_SIZE)
+        .set_max_variables(MAX_VARIABLES);
+}
+
 /// Create a Rhai engine with built-ins registered.
 pub fn create_engine(grid: Grid) -> Engine {
     let value_cache = ValueCache::default();
@@ -18,6 +36,7 @@ pub fn create_engine(grid: Grid) -> Engine {
 /// Create a Rhai engine with built-ins registered and shared value cache.
 pub fn create_engine_with_cache(grid: Grid, value_cache: ValueCache) -> Engine {
     let mut engine = Engine::new();
+    configure_engine_limits(&mut engine);
     crate::builtins::register_builtins(&mut engine, grid, value_cache);
     engine
 }
@@ -64,7 +83,7 @@ pub fn eval_with_functions(
     formula: &str,
     custom_ast: Option<&AST>,
 ) -> Result<Dynamic, Box<EvalAltResult>> {
-    if custom_ast.is_some() {
+    if let Some(custom_ast) = custom_ast {
         // For now, use simple AST merging
         // TODO: This has issues with closures not accessing registered functions
         let formula_ast = engine.compile(formula).map_err(|e| {
@@ -72,7 +91,7 @@ pub fn eval_with_functions(
             let pos = e.1;
             Box::new(EvalAltResult::ErrorParsing(parse_type, pos))
         })?;
-        let merged = custom_ast.unwrap().clone().merge(&formula_ast);
+        let merged = custom_ast.clone().merge(&formula_ast);
         engine.eval_ast(&merged)
     } else {
         engine.eval(formula)
@@ -106,6 +125,7 @@ pub fn create_script_engine(
     modifications: ScriptModifications,
 ) -> Engine {
     let mut engine = Engine::new();
+    configure_engine_limits(&mut engine);
     crate::builtins::register_builtins(&mut engine, grid.clone(), value_cache);
     crate::builtins::register_script_builtins(&mut engine, grid, modifications);
     engine
