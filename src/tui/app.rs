@@ -755,11 +755,12 @@ fn parse_column_letter(s: &str) -> Option<usize> {
     if s.is_empty() || !s.chars().all(|c| c.is_ascii_alphabetic()) {
         return None;
     }
-    let col = s
-        .bytes()
-        .fold(0usize, |acc, c| acc * 26 + (c - b'A') as usize + 1)
-        - 1;
-    Some(col)
+    let mut col_acc = 0usize;
+    for c in s.bytes() {
+        let digit = (c - b'A') as usize + 1;
+        col_acc = col_acc.checked_mul(26)?.checked_add(digit)?;
+    }
+    col_acc.checked_sub(1)
 }
 
 #[cfg(test)]
@@ -813,5 +814,15 @@ mod tests {
         assert!(!should_quit);
         assert_eq!(app.core.file_path, Some(original_path));
         assert!(app.status_message.starts_with("Error:"));
+    }
+
+    #[test]
+    fn test_parse_column_letter_checked_math() {
+        assert_eq!(parse_column_letter("A"), Some(0));
+        assert_eq!(parse_column_letter("AA"), Some(26));
+        assert_eq!(parse_column_letter("aZ"), Some(51));
+
+        let huge = "Z".repeat(40);
+        assert!(parse_column_letter(&huge).is_none());
     }
 }
