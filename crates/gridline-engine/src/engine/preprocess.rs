@@ -166,9 +166,9 @@ fn offset_single_ref(cell_ref_str: &str, delta_col: isize, delta_row: isize) -> 
         return cell_ref_str.to_string();
     };
 
-    let new_col = cr.col as isize + delta_col;
-    let new_row = cr.row as isize + delta_row;
-    if new_col < 0 || new_row < 0 {
+    let new_col = cr.col as i128 + delta_col as i128;
+    let new_row = cr.row as i128 + delta_row as i128;
+    if new_col < 0 || new_row < 0 || new_col > usize::MAX as i128 || new_row > usize::MAX as i128 {
         return "#REF!".to_string();
     }
 
@@ -366,12 +366,10 @@ pub fn preprocess_script_with_context(script: &str, context: Option<&CellRef>) -
     let script = if let Some(cell_ref) = context {
         let row_re = Regex::new(r"\bROW\(\s*\)").unwrap();
         let col_re = Regex::new(r"\bCOL\(\s*\)").unwrap();
-        let script = row_re
-            .replace_all(script, (cell_ref.row + 1).to_string())
-            .to_string();
-        col_re
-            .replace_all(&script, (cell_ref.col + 1).to_string())
-            .to_string()
+        let row_literal = (cell_ref.row as u128 + 1).to_string();
+        let col_literal = (cell_ref.col as u128 + 1).to_string();
+        let script = row_re.replace_all(script, row_literal).to_string();
+        col_re.replace_all(&script, col_literal).to_string()
     } else {
         script.to_string()
     };
@@ -519,5 +517,24 @@ mod tests {
         let formula = "A1 + @B2";
         let shifted = offset_formula_references(formula, -1, 0);
         assert_eq!(shifted, "#REF! + @A2");
+    }
+
+    #[test]
+    fn test_offset_formula_references_handles_large_columns() {
+        let large_col = CellRef::col_to_letters(isize::MAX as usize + 1);
+        let formula = format!("{}1", large_col);
+        let shifted = offset_formula_references(&formula, 1, 0);
+        let expected = CellRef::new(isize::MAX as usize + 2, 0).to_string();
+        assert_eq!(shifted, expected);
+    }
+
+    #[test]
+    fn test_preprocess_script_with_context_handles_max_indices() {
+        let context = CellRef::new(usize::MAX, usize::MAX);
+        let out = preprocess_script_with_context("ROW()+COL()", Some(&context));
+        assert_eq!(
+            out,
+            format!("{}+{}", usize::MAX as u128 + 1, usize::MAX as u128 + 1)
+        );
     }
 }
