@@ -103,12 +103,26 @@ pub fn get_commands_help() -> Vec<String> {
         "Functions:",
         "  :source <file>  Load Rhai functions",
         "  :so             Reload functions",
-        "",
-        "Press Esc or q to close",
     ]
     .into_iter()
     .map(str::to_string)
     .collect()
+}
+
+/// Get static project metadata shown in help modal.
+pub fn get_about_help() -> Vec<String> {
+    vec![
+        "About Gridline".to_string(),
+        "".to_string(),
+        format!("  Name: {}", env!("CARGO_PKG_NAME")),
+        format!("  Version: {}", env!("CARGO_PKG_VERSION")),
+        format!("  Author: {}", env!("CARGO_PKG_AUTHORS")),
+        format!("  License: {}", env!("CARGO_PKG_LICENSE")),
+        format!("  Repository: {}", env!("CARGO_PKG_REPOSITORY")),
+        "".to_string(),
+        "  Scroll: j/k, Up/Down, PgUp/PgDn, g/G, Home/End".to_string(),
+        "  Close: Esc, q, or Ctrl+g".to_string(),
+    ]
 }
 
 fn custom_help_text(custom: &super::keymap::CustomKeymap) -> Vec<String> {

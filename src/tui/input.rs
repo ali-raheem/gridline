@@ -40,6 +40,24 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                     KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.close_help_modal();
                     }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.scroll_help_by(1);
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.scroll_help_by(-1);
+                    }
+                    KeyCode::PageDown => {
+                        app.scroll_help_by(12);
+                    }
+                    KeyCode::PageUp => {
+                        app.scroll_help_by(-12);
+                    }
+                    KeyCode::Home | KeyCode::Char('g') => {
+                        app.scroll_help_to_top();
+                    }
+                    KeyCode::End | KeyCode::Char('G') => {
+                        app.scroll_help_to_end();
+                    }
                     _ => {}
                 }
                 continue;

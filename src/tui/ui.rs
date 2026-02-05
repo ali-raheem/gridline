@@ -1,7 +1,7 @@
 //! UI rendering
 
 use super::app::{App, Mode};
-use super::help::{get_commands_help, get_help_text};
+use super::help::{get_about_help, get_commands_help, get_help_text};
 use gridline_engine::engine::CellRef;
 use gridline_engine::plot::{PLOT_PREFIX, PlotData, PlotKind, PlotSpec, parse_plot_spec};
 use ratatui::{
@@ -425,8 +425,6 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
                 .add_modifier(Modifier::BOLD)
         } else if text.starts_with("  ") {
             Style::default().fg(Color::White)
-        } else if text.starts_with("Press") {
-            Style::default().fg(Color::DarkGray)
         } else {
             Style::default()
                 .fg(Color::Yellow)
@@ -435,9 +433,33 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
         lines.push(Line::from(Span::styled(text, style)));
     }
 
+    // Add separator
+    lines.push(Line::from(""));
+
+    for text in get_about_help() {
+        let style = if text == "About Gridline" {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if text.starts_with("  ") {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        };
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+
+    let viewport_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = lines.len().saturating_sub(viewport_height);
+    let effective_scroll = app.help_scroll.min(max_scroll);
+    let scroll_y = u16::try_from(effective_scroll).unwrap_or(u16::MAX);
+
     let paragraph = Paragraph::new(lines)
         .block(block)
         .style(modal_style)
+        .scroll((scroll_y, 0))
         .wrap(Wrap { trim: false });
 
     f.render_widget(Clear, area);

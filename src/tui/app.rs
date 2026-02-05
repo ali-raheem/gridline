@@ -102,6 +102,8 @@ pub struct App {
 
     /// Help modal state
     pub help_modal: bool,
+    /// Help modal vertical scroll offset (line index)
+    pub help_scroll: usize,
 
     /// Active keymap
     pub keymap: Keymap,
@@ -136,6 +138,7 @@ impl App {
             column_widths: HashMap::new(),
             plot_modal: None,
             help_modal: false,
+            help_scroll: 0,
             keymap: Keymap::Vim,
             status_message: String::new(),
         }
@@ -147,6 +150,27 @@ impl App {
 
     pub fn close_help_modal(&mut self) {
         self.help_modal = false;
+    }
+
+    pub fn open_help_modal(&mut self) {
+        self.help_modal = true;
+        self.help_scroll = 0;
+    }
+
+    pub fn scroll_help_by(&mut self, delta: isize) {
+        if delta >= 0 {
+            self.help_scroll = self.help_scroll.saturating_add(delta as usize);
+        } else {
+            self.help_scroll = self.help_scroll.saturating_sub((-delta) as usize);
+        }
+    }
+
+    pub fn scroll_help_to_top(&mut self) {
+        self.help_scroll = 0;
+    }
+
+    pub fn scroll_help_to_end(&mut self) {
+        self.help_scroll = usize::MAX;
     }
 
     pub fn open_plot_modal_at_cursor(&mut self) {
@@ -651,7 +675,7 @@ impl App {
                 self.delete_column();
             }
             "help" | "h" => {
-                self.help_modal = true;
+                self.open_help_modal();
             }
             "call" => {
                 // :call func_name(args) - Execute a function from custom Rhai script
