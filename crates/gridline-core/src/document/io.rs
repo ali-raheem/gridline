@@ -1,8 +1,8 @@
 use super::Document;
 use crate::error::{GridlineError, Result};
 use crate::storage::{parse_csv, parse_grd, write_csv, write_grd};
-use gridline_engine::engine::create_engine_with_functions_and_cache;
 use gridline_engine::engine::CellType;
+use gridline_engine::engine::create_engine_with_functions_and_cache;
 use std::path::{Path, PathBuf};
 
 const MAX_FUNCTION_FILE_BYTES: u64 = 1_048_576; // 1 MiB
@@ -37,7 +37,11 @@ fn ensure_total_functions_script_size(size: usize) -> Result<()> {
     Ok(())
 }
 
-fn checked_combined_script_size(current: usize, next: usize, needs_separator: bool) -> Result<usize> {
+fn checked_combined_script_size(
+    current: usize,
+    next: usize,
+    needs_separator: bool,
+) -> Result<usize> {
     let separator_len = if needs_separator { 2usize } else { 0usize };
     let total = current
         .checked_add(separator_len)
@@ -213,25 +217,29 @@ impl Document {
     ) -> Result<usize> {
         let mut count = 0;
         for (row_idx, line) in csv_content.lines().enumerate() {
-            let fields =
-                crate::storage::csv::parse_csv_line(line).map_err(|message| GridlineError::Parse {
+            let fields = crate::storage::csv::parse_csv_line(line).map_err(|message| {
+                GridlineError::Parse {
                     line: row_idx + 1,
                     message: message.to_string(),
-                })?;
+                }
+            })?;
             for (col_idx, field) in fields.into_iter().enumerate() {
                 if field.is_empty() {
                     continue;
                 }
-                let row = start_row.checked_add(row_idx).ok_or_else(|| GridlineError::Parse {
-                    line: row_idx + 1,
-                    message: "CSV row index overflow from import offset".to_string(),
-                })?;
-                let col = start_col.checked_add(col_idx).ok_or_else(|| GridlineError::Parse {
-                    line: row_idx + 1,
-                    message: "CSV column index overflow from import offset".to_string(),
-                })?;
-                let cell_ref =
-                    gridline_engine::engine::CellRef::new(col, row);
+                let row = start_row
+                    .checked_add(row_idx)
+                    .ok_or_else(|| GridlineError::Parse {
+                        line: row_idx + 1,
+                        message: "CSV row index overflow from import offset".to_string(),
+                    })?;
+                let col = start_col
+                    .checked_add(col_idx)
+                    .ok_or_else(|| GridlineError::Parse {
+                        line: row_idx + 1,
+                        message: "CSV column index overflow from import offset".to_string(),
+                    })?;
+                let cell_ref = gridline_engine::engine::CellRef::new(col, row);
                 let cell = crate::storage::csv::parse_csv_field(&field);
                 self.grid.insert(cell_ref, cell);
                 count += 1;

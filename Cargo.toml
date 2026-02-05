@@ -48,8 +48,8 @@ gui = ["dep:eframe", "dep:arboard"]
 webui = []
 
 [dependencies]
-gridline-core = { path = "crates/gridline-core", version = "0.2.0" }
-gridline-engine = { path = "crates/gridline-engine", version = "0.2.0" }
+gridline-core = { path = "crates/gridline-core", version = "0.2.1" }
+gridline-engine = { path = "crates/gridline-engine", version = "0.2.1" }
 
 # Ergonomic error handling in binaries.
 anyhow = "1"

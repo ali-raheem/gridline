@@ -709,7 +709,8 @@ mod tests {
         let spill_output = CellRef::new(0, 1); // A2
         assert!(core.spill_sources.contains_key(&spill_output));
 
-        core.set_cell_from_input(spill_output.clone(), "99").unwrap();
+        core.set_cell_from_input(spill_output.clone(), "99")
+            .unwrap();
 
         assert!(!core.spill_sources.contains_key(&spill_output));
         let source = CellRef::new(0, 0);

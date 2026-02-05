@@ -29,10 +29,12 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
 
     for (row_idx, line_res) in reader.lines().enumerate() {
         let line = line_res?;
-        let row = start_row.checked_add(row_idx).ok_or_else(|| GridlineError::Parse {
-            line: row_idx + 1,
-            message: "CSV row index overflow from import offset".to_string(),
-        })?;
+        let row = start_row
+            .checked_add(row_idx)
+            .ok_or_else(|| GridlineError::Parse {
+                line: row_idx + 1,
+                message: "CSV row index overflow from import offset".to_string(),
+            })?;
         let fields = parse_csv_line(&line).map_err(|message| GridlineError::Parse {
             line: row_idx + 1,
             message: message.to_string(),
@@ -41,10 +43,12 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
             if field.is_empty() {
                 continue;
             }
-            let col = start_col.checked_add(col_idx).ok_or_else(|| GridlineError::Parse {
-                line: row_idx + 1,
-                message: "CSV column index overflow from import offset".to_string(),
-            })?;
+            let col = start_col
+                .checked_add(col_idx)
+                .ok_or_else(|| GridlineError::Parse {
+                    line: row_idx + 1,
+                    message: "CSV column index overflow from import offset".to_string(),
+                })?;
             let cell_ref = CellRef::new(col, row);
             let cell = parse_csv_field(&field);
             cells.push((cell_ref, cell));
