@@ -5,6 +5,10 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+const MAX_KEYMAP_FILE_BYTES: u64 = 1_048_576; // 1 MiB
+const MAX_BINDINGS_PER_MODE: usize = 512;
+const MAX_TOTAL_BINDINGS: usize = 1_024;
+
 #[derive(Debug, Deserialize)]
 struct KeymapsFile {
     meta: Option<KeymapsMeta>,
@@ -35,14 +39,29 @@ pub fn load_keymap(
 
     if let Some(path) = config_path.as_ref() {
         if path.exists() {
-            match std::fs::read_to_string(path) {
-                Ok(content) => match toml::from_str::<KeymapsFile>(&content) {
-                    Ok(parsed) => file = Some(parsed),
-                    Err(err) => {
-                        warnings.push(format!("Failed to parse {}: {}", path.display(), err))
-                    }
+            match std::fs::metadata(path) {
+                Ok(meta) if meta.len() > MAX_KEYMAP_FILE_BYTES => {
+                    warnings.push(format!(
+                        "Refusing to read {}: file too large ({} bytes, max {})",
+                        path.display(),
+                        meta.len(),
+                        MAX_KEYMAP_FILE_BYTES
+                    ));
+                }
+                Ok(_) => match std::fs::read_to_string(path) {
+                    Ok(content) => match toml::from_str::<KeymapsFile>(&content) {
+                        Ok(parsed) => file = Some(parsed),
+                        Err(err) => {
+                            warnings.push(format!("Failed to parse {}: {}", path.display(), err))
+                        }
+                    },
+                    Err(err) => warnings.push(format!("Failed to read {}: {}", path.display(), err)),
                 },
-                Err(err) => warnings.push(format!("Failed to read {}: {}", path.display(), err)),
+                Err(err) => warnings.push(format!(
+                    "Failed to read metadata for {}: {}",
+                    path.display(),
+                    err
+                )),
             }
         } else if keymap_file.is_some() {
             warnings.push(format!("Keymap file not found: {}", path.display()));
@@ -106,6 +125,13 @@ fn build_custom_keymap(name: &str, entry: &KeymapFile) -> Result<CustomKeymap, V
     let visual = parse_mode_bindings("visual", entry.visual.as_ref(), &mut errors);
     let edit = parse_mode_bindings("edit", entry.edit.as_ref(), &mut errors);
     let command = parse_mode_bindings("command", entry.command.as_ref(), &mut errors);
+    let total_bindings = normal.len() + visual.len() + edit.len() + command.len();
+    if total_bindings > MAX_TOTAL_BINDINGS {
+        errors.push(format!(
+            "Too many total bindings: {} (max {})",
+            total_bindings, MAX_TOTAL_BINDINGS
+        ));
+    }
 
     if errors.is_empty() {
         Ok(CustomKeymap {
@@ -132,6 +158,15 @@ fn parse_mode_bindings(
     let Some(raw) = raw else {
         return bindings;
     };
+    if raw.len() > MAX_BINDINGS_PER_MODE {
+        errors.push(format!(
+            "Too many {} bindings: {} (max {})",
+            mode,
+            raw.len(),
+            MAX_BINDINGS_PER_MODE
+        ));
+        return bindings;
+    }
     for (combo_str, action_str) in raw {
         match (parse_key_combo(combo_str), action_from_str(action_str)) {
             (Ok(combo), Some(action)) => bindings.push(Binding { combo, action }),
@@ -364,6 +399,44 @@ description = "Vim defaults"
         let (keymap, warnings) = load_keymap(Some("nonexistent"), Some(&temp_path));
         assert_eq!(keymap, Keymap::Vim);
         assert!(!warnings.is_empty());
+
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn load_keymap_rejects_oversized_file() {
+        let temp_path = std::env::temp_dir().join("gridline_keymaps_large.toml");
+        let oversized = "a".repeat(MAX_KEYMAP_FILE_BYTES as usize + 1);
+        std::fs::write(&temp_path, oversized).expect("write oversized keymap");
+
+        let (keymap, warnings) = load_keymap(None, Some(&temp_path));
+        assert_eq!(keymap, Keymap::Vim);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("file too large") && w.contains("Refusing to read"))
+        );
+
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn load_keymap_rejects_excessive_bindings() {
+        let temp_path = std::env::temp_dir().join("gridline_keymaps_many.toml");
+        let mut content = String::from("[meta]\ndefault = \"big\"\n\n[keymaps.big]\n");
+        content.push_str("description = \"too many\"\n\n[keymaps.big.normal]\n");
+        for i in 0..=MAX_BINDINGS_PER_MODE {
+            content.push_str(&format!("\"C-{}\" = \"save\"\n", i));
+        }
+        std::fs::write(&temp_path, content).expect("write keymap with too many bindings");
+
+        let (keymap, warnings) = load_keymap(Some("big"), Some(&temp_path));
+        assert_eq!(keymap, Keymap::Vim);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("Too many normal bindings"))
+        );
 
         let _ = std::fs::remove_file(&temp_path);
     }
