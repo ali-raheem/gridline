@@ -13,6 +13,8 @@ use regex::Regex;
 
 use super::cell_ref::CellRef;
 
+const MAX_DEPENDENCY_RANGE_CELLS: usize = 1_000_000;
+
 /// Extract all cell references from a script as dependencies.
 pub fn extract_dependencies(script: &str) -> Vec<CellRef> {
     let mut deps = Vec::new();
@@ -34,6 +36,16 @@ pub fn extract_dependencies(script: &str) -> Vec<CellRef> {
             let max_row = start.row.max(end.row);
             let min_col = start.col.min(end.col);
             let max_col = start.col.max(end.col);
+
+            let row_count = max_row - min_row + 1;
+            let col_count = max_col - min_col + 1;
+            let Some(cell_count) = row_count.checked_mul(col_count) else {
+                continue;
+            };
+            if cell_count > MAX_DEPENDENCY_RANGE_CELLS {
+                continue;
+            }
+
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
                     deps.push(CellRef::new(col, row));
@@ -98,4 +110,15 @@ pub fn parse_range(range: &str) -> Option<(usize, usize, usize, usize)> {
     let start = CellRef::from_str(parts[0])?;
     let end = CellRef::from_str(parts[1])?;
     Some((start.col, start.row, end.col, end.row))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_dependencies_skips_over_limit_ranges() {
+        let deps = extract_dependencies("SUM(A1:A1000001)+B2");
+        assert_eq!(deps, vec![CellRef::new(1, 1)]);
+    }
 }
