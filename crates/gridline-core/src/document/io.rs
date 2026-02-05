@@ -49,17 +49,30 @@ impl Document {
             return Err(GridlineError::NoFunctionsLoaded);
         }
 
-        // Re-read all files
         let paths = self.functions_files.clone();
-        self.functions_files.clear();
-        self.custom_functions = None;
-
-        let mut count = 0;
-        for path in paths {
-            self.load_functions(&path)?;
-            count += 1;
+        let mut merged = String::new();
+        for (idx, path) in paths.iter().enumerate() {
+            let content = std::fs::read_to_string(path)?;
+            if idx > 0 {
+                merged.push_str("\n\n");
+            }
+            merged.push_str(&content);
         }
-        Ok(count)
+
+        let (engine, custom_ast, compile_error) = create_engine_with_functions_and_cache(
+            self.grid.clone(),
+            self.value_cache.clone(),
+            Some(&merged),
+        );
+        if let Some(err) = compile_error {
+            return Err(GridlineError::RhaiCompile(err));
+        }
+
+        self.custom_functions = Some(merged);
+        self.engine = engine;
+        self.custom_ast = custom_ast;
+
+        Ok(paths.len())
     }
 
     /// Save to current file path.
@@ -258,5 +271,47 @@ mod tests {
 
         let result = Document::with_file(None, vec![bad_path]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reload_functions_failure_is_transactional() {
+        let mut doc = Document::new();
+
+        let path = std::env::temp_dir().join(format!(
+            "gridline_reload_funcs_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn triple(x) {{ x * 3 }}").unwrap();
+        }
+        doc.load_functions(&path).unwrap();
+        let before = doc.custom_functions.clone();
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn broken(x) {{ x + }}").unwrap();
+        }
+
+        let err = doc.reload_functions();
+        assert!(err.is_err());
+        assert_eq!(doc.custom_functions, before);
+
+        doc.set_cell_from_input(CellRef::new(0, 0), "=triple(3)").unwrap();
+        assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "9");
     }
 }

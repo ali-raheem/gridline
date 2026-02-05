@@ -6,7 +6,9 @@
 use super::{Document, UndoAction};
 use crate::error::{GridlineError, Result};
 use gridline_engine::builtins::ScriptModifications;
-use gridline_engine::engine::{create_script_engine_with_functions, eval_with_functions_script};
+use gridline_engine::engine::{
+    CellType, create_script_engine_with_functions, detect_cycle, eval_with_functions_script,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -92,6 +94,25 @@ pub struct ScriptResult {
 }
 
 impl Document {
+    fn rollback_script_modifications(
+        &mut self,
+        mods: &HashMap<
+            gridline_engine::engine::CellRef,
+            (Option<gridline_engine::engine::Cell>, Option<gridline_engine::engine::Cell>),
+        >,
+    ) {
+        for (cell_ref, (old_cell, _new_cell)) in mods {
+            match old_cell {
+                Some(cell) => {
+                    self.grid.insert(cell_ref.clone(), cell.clone());
+                }
+                None => {
+                    self.grid.remove(cell_ref);
+                }
+            }
+        }
+    }
+
     /// Execute a Rhai script with write access to the spreadsheet.
     ///
     /// The script can use:
@@ -133,18 +154,34 @@ impl Document {
                 .and(self.custom_functions.as_deref()),
         );
 
-        let return_value = match &result {
+        let return_value = match result {
             Ok(val) if !val.is_unit() => Some(val.to_string()),
-            _ => None,
+            Ok(_) => None,
+            Err(e) => {
+                let mods = modifications.lock().unwrap();
+                self.rollback_script_modifications(&mods);
+                return Err(GridlineError::Rhai(e));
+            }
         };
 
-        // Check for execution errors
-        if let Err(e) = result {
-            return Err(GridlineError::Rhai(e));
+        // Collect modifications and create undo batch.
+        let mods = modifications.lock().unwrap();
+        for (cell_ref, (_old_cell, new_cell)) in mods.iter() {
+            if matches!(new_cell, Some(cell) if matches!(cell.contents, CellType::Script(_)))
+                && detect_cycle(cell_ref, &self.grid).is_some()
+            {
+                self.rollback_script_modifications(&mods);
+                return Err(GridlineError::CircularDependency);
+            }
         }
 
-        // Collect modifications and create undo batch
-        let mods = modifications.lock().unwrap();
+        let mut invalidated_spill_sources = std::collections::HashSet::new();
+        for cell_ref in mods.keys() {
+            if let Some(source) = self.prepare_overwrite(cell_ref) {
+                invalidated_spill_sources.insert(source);
+            }
+        }
+
         let cells_modified = mods.len();
 
         if cells_modified > 0 {
@@ -170,6 +207,9 @@ impl Document {
             // Mark dependents dirty
             for cell_ref in mods.keys() {
                 self.mark_dependents_dirty_public(cell_ref);
+            }
+            for source in invalidated_spill_sources {
+                self.mark_dependents_dirty_public(&source);
             }
         }
 
@@ -323,5 +363,44 @@ mod tests {
         assert!(
             matches!(cell2.contents, gridline_engine::engine::CellType::Number(n) if (n - 3.0).abs() < 0.001)
         );
+    }
+
+    #[test]
+    fn test_execute_script_rolls_back_on_error() {
+        let mut doc = Document::new();
+        let ctx = ScriptContext::new(0, 0);
+
+        doc.set_cell_from_input(CellRef::new(0, 0), "1").unwrap();
+        doc.modified = false;
+        doc.undo_stack.clear();
+
+        let result = doc.execute_script(
+            r#"
+            SET_CELL(0, 0, 42);
+            SET_CELL(1, 0, 99);
+            SET_CELL(-1, 0, 0);
+            "#,
+            &ctx,
+        );
+        assert!(result.is_err());
+
+        let cell = doc.grid.get(&CellRef::new(0, 0)).unwrap();
+        assert!(
+            matches!(cell.contents, gridline_engine::engine::CellType::Number(n) if (n - 1.0).abs() < 0.001)
+        );
+        assert!(doc.grid.get(&CellRef::new(1, 0)).is_none());
+        assert!(doc.undo_stack.is_empty());
+        assert!(!doc.modified);
+    }
+
+    #[test]
+    fn test_execute_script_rejects_circular_dependency() {
+        let mut doc = Document::new();
+        let ctx = ScriptContext::new(0, 0);
+
+        let result = doc.execute_script(r#"SET_CELL(0, 0, "=A1")"#, &ctx);
+        assert!(matches!(result, Err(GridlineError::CircularDependency)));
+        assert!(doc.grid.get(&CellRef::new(0, 0)).is_none());
+        assert!(doc.undo_stack.is_empty());
     }
 }

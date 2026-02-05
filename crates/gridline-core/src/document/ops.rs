@@ -65,7 +65,7 @@ impl Document {
 
     /// Prepare a cell position for overwrite by clearing stale spill/cache state.
     /// Returns any spill source that was invalidated so dependents can be dirtied.
-    fn prepare_overwrite(&mut self, cell_ref: &CellRef) -> Option<CellRef> {
+    pub(crate) fn prepare_overwrite(&mut self, cell_ref: &CellRef) -> Option<CellRef> {
         // If writing into a spill output, invalidate the source spill and force source re-eval.
         let spilled_from = self.spill_sources.get(cell_ref).cloned();
         if let Some(source) = &spilled_from {
@@ -115,6 +115,7 @@ impl Document {
     /// Set cell contents from input string.
     pub fn set_cell_from_input(&mut self, cell_ref: CellRef, input: &str) -> Result<()> {
         let cell = Cell::from_input(input);
+        let mut invalidated_spill_sources = Vec::new();
 
         // Check for circular dependencies if it's a script
         if let CellType::Script(_) = &cell.contents {
@@ -142,23 +143,31 @@ impl Document {
                     self.grid.remove(&cell_ref);
                 }
             }
+            if let Some(source) = self.prepare_overwrite(&cell_ref) {
+                invalidated_spill_sources.push(source);
+            }
             self.push_undo(cell_ref.clone(), Some(cell.clone()));
             self.grid.insert(cell_ref.clone(), cell);
         } else {
+            if let Some(source) = self.prepare_overwrite(&cell_ref) {
+                invalidated_spill_sources.push(source);
+            }
             self.push_undo(cell_ref.clone(), Some(cell.clone()));
             self.grid.insert(cell_ref.clone(), cell);
         }
 
         self.modified = true;
 
-        // Clear any spill originating from this cell
-        self.clear_spill_from(&cell_ref);
-
         // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
 
         // Mark dependent cells as dirty
         self.mark_dependents_dirty(&cell_ref);
+        for source in invalidated_spill_sources {
+            if source != cell_ref {
+                self.mark_dependents_dirty(&source);
+            }
+        }
 
         Ok(())
     }
@@ -166,16 +175,19 @@ impl Document {
     /// Clear the specified cell
     pub fn clear_cell(&mut self, cell_ref: &CellRef) {
         if self.grid.get(cell_ref).is_some() {
+            let invalidated_spill_source = self.prepare_overwrite(cell_ref);
             self.push_undo(cell_ref.clone(), None);
             self.grid.remove(cell_ref);
             self.modified = true;
 
-            // Clear any spill originating from this cell
-            self.clear_spill_from(cell_ref);
-
             // Rebuild dependencies
             self.rebuild_dependents();
             self.mark_dependents_dirty(cell_ref);
+            if let Some(source) = invalidated_spill_source
+                && &source != cell_ref
+            {
+                self.mark_dependents_dirty(&source);
+            }
         }
     }
 
@@ -620,5 +632,27 @@ mod tests {
             CellType::Script(s) => assert_eq!(s, "B2"),
             _ => panic!("Expected script cell"),
         }
+    }
+
+    #[test]
+    fn test_set_cell_over_spill_output_clears_spill_and_marks_source_dirty() {
+        let mut core = Document::new();
+
+        core.set_cell_from_input(CellRef::new(1, 0), "1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
+        core.set_cell_from_input(CellRef::new(1, 2), "3").unwrap(); // B3
+        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
+            .unwrap(); // A1 spills to A2:A3
+        core.evaluate_all_cells();
+
+        let spill_output = CellRef::new(0, 1); // A2
+        assert!(core.spill_sources.contains_key(&spill_output));
+
+        core.set_cell_from_input(spill_output.clone(), "99").unwrap();
+
+        assert!(!core.spill_sources.contains_key(&spill_output));
+        let source = CellRef::new(0, 0);
+        let source_cell = core.grid.get(&source).unwrap();
+        assert!(source_cell.dirty);
     }
 }
