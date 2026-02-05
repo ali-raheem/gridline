@@ -112,8 +112,6 @@ pub fn get_commands_help() -> Vec<String> {
 /// Get static project metadata shown in help modal.
 pub fn get_about_help() -> Vec<String> {
     vec![
-        "About Gridline".to_string(),
-        "".to_string(),
         format!("  Name: {}", env!("CARGO_PKG_NAME")),
         format!("  Version: {}", env!("CARGO_PKG_VERSION")),
         format!("  Author: {}", env!("CARGO_PKG_AUTHORS")),
