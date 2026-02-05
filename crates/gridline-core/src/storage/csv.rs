@@ -164,7 +164,8 @@ pub fn write_csv(
 /// Escape a field for CSV output
 fn escape_csv_field(field: &str) -> String {
     // Guard against CSV formula injection in spreadsheet apps.
-    let safe_field = if matches!(field.chars().next(), Some('=' | '+' | '-' | '@')) {
+    let first_non_space = field.trim_start_matches([' ', '\t']).chars().next();
+    let safe_field = if matches!(first_non_space, Some('=' | '+' | '-' | '@')) {
         format!("'{}", field)
     } else {
         field.to_string()
@@ -220,6 +221,13 @@ mod tests {
         assert_eq!(escape_csv_field("simple"), "simple");
         assert_eq!(escape_csv_field("with,comma"), "\"with,comma\"");
         assert_eq!(escape_csv_field("with\"quote"), "\"with\"\"quote\"");
+    }
+
+    #[test]
+    fn test_escape_csv_field_formula_injection_with_leading_whitespace() {
+        assert_eq!(escape_csv_field(" =1+1"), "' =1+1");
+        assert_eq!(escape_csv_field("\t-2+3"), "'\t-2+3");
+        assert_eq!(escape_csv_field(" \t@cmd"), "' \t@cmd");
     }
 
     #[test]
