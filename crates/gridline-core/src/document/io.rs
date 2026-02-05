@@ -9,12 +9,12 @@ impl Document {
     /// Load custom Rhai functions from a file (appends to existing functions).
     /// Returns the path loaded, or an error.
     pub fn load_functions(&mut self, path: &Path) -> Result<PathBuf> {
-        let content = std::fs::read_to_string(path)?;
+        let path_buf = std::fs::canonicalize(path)?;
+        let content = std::fs::read_to_string(&path_buf)?;
 
-        let path_buf = path.to_path_buf();
         if self.functions_files.contains(&path_buf) {
             // Already loaded: keep current compiled state unchanged.
-            return Ok(path_buf);
+            return Ok(path_buf.clone());
         }
 
         let mut new_functions_files = self.functions_files.clone();
@@ -257,7 +257,8 @@ mod tests {
         assert_eq!(doc.functions_files, files_before);
         assert_eq!(doc.custom_functions, custom_before);
 
-        doc.set_cell_from_input(CellRef::new(0, 0), "=double(3)").unwrap();
+        doc.set_cell_from_input(CellRef::new(0, 0), "=double(3)")
+            .unwrap();
         assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "6");
     }
 
@@ -325,7 +326,8 @@ mod tests {
         assert!(err.is_err());
         assert_eq!(doc.custom_functions, before);
 
-        doc.set_cell_from_input(CellRef::new(0, 0), "=triple(3)").unwrap();
+        doc.set_cell_from_input(CellRef::new(0, 0), "=triple(3)")
+            .unwrap();
         assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "9");
     }
 
@@ -363,8 +365,50 @@ mod tests {
         assert_eq!(doc.functions_files.len(), 1);
         assert_eq!(doc.custom_functions, before);
 
-        doc.set_cell_from_input(CellRef::new(0, 0), "=double(4)").unwrap();
+        doc.set_cell_from_input(CellRef::new(0, 0), "=double(4)")
+            .unwrap();
         assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "8");
+    }
+
+    #[test]
+    fn test_load_functions_equivalent_paths_are_idempotent() {
+        let mut doc = Document::new();
+
+        let path = std::env::temp_dir().join(format!(
+            "gridline_idempotent_funcs_equiv_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        let equiv_path = path
+            .parent()
+            .unwrap()
+            .join(".")
+            .join(path.file_name().unwrap());
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn double(x) {{ x * 2 }}").unwrap();
+        }
+
+        let first = doc.load_functions(&path).unwrap();
+        let second = doc.load_functions(&equiv_path).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(doc.functions_files.len(), 1);
+
+        doc.set_cell_from_input(CellRef::new(0, 0), "=double(5)")
+            .unwrap();
+        assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "10");
     }
 
     #[test]
