@@ -132,14 +132,22 @@ impl GridlineGuiApp {
                 self.app.status = "✓ Cleared".to_string();
             }
             Action::DeleteRow => {
-                let (_, r1, _, _) = self.app.selection_bounds();
-                self.app.delete_row(r1);
-                self.app.status = format!("✓ Deleted row {}", r1 + 1);
+                let (_, r1, _, r2) = self.app.selection_bounds();
+                if r1 == r2 {
+                    self.app.delete_row(r1);
+                    self.app.status = format!("✓ Deleted row {}", r1 + 1);
+                } else {
+                    self.app.status = "Select a single row to delete".to_string();
+                }
             }
             Action::DeleteColumn => {
-                let (c1, _, _, _) = self.app.selection_bounds();
-                self.app.delete_column(c1);
-                self.app.status = format!("✓ Deleted column {}", CellRef::col_to_letters(c1));
+                let (c1, _, c2, _) = self.app.selection_bounds();
+                if c1 == c2 {
+                    self.app.delete_column(c1);
+                    self.app.status = format!("✓ Deleted column {}", CellRef::col_to_letters(c1));
+                } else {
+                    self.app.status = "Select a single column to delete".to_string();
+                }
             }
             Action::InsertRow => {
                 let (_, r1, _, _) = self.app.selection_bounds();
@@ -214,6 +222,38 @@ mod tests {
         assert_eq!(app.cell_input_string(&CellRef::new(0, 0)), "");
         assert_eq!(app.status, "✓ Cut 1 cell");
         assert_eq!(clipboard.text.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn test_delete_row_requires_single_row_selection() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "10").unwrap();
+        doc.set_cell_from_input(CellRef::new(0, 1), "20").unwrap();
+        let mut gui = GridlineGuiApp::new(doc);
+        gui.app.selection_anchor = CellRef::new(0, 0);
+        gui.app.selection_end = CellRef::new(0, 1);
+
+        gui.handle_action(Action::DeleteRow);
+
+        assert_eq!(gui.app.cell_input_string(&CellRef::new(0, 0)), "10");
+        assert_eq!(gui.app.cell_input_string(&CellRef::new(0, 1)), "20");
+        assert_eq!(gui.app.status, "Select a single row to delete");
+    }
+
+    #[test]
+    fn test_delete_column_requires_single_column_selection() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "10").unwrap();
+        doc.set_cell_from_input(CellRef::new(1, 0), "20").unwrap();
+        let mut gui = GridlineGuiApp::new(doc);
+        gui.app.selection_anchor = CellRef::new(0, 0);
+        gui.app.selection_end = CellRef::new(1, 0);
+
+        gui.handle_action(Action::DeleteColumn);
+
+        assert_eq!(gui.app.cell_input_string(&CellRef::new(0, 0)), "10");
+        assert_eq!(gui.app.cell_input_string(&CellRef::new(1, 0)), "20");
+        assert_eq!(gui.app.status, "Select a single column to delete");
     }
 }
 
