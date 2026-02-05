@@ -5,12 +5,30 @@ use gridline_engine::engine::create_engine_with_functions_and_cache;
 use gridline_engine::engine::CellType;
 use std::path::{Path, PathBuf};
 
+const MAX_FUNCTION_FILE_BYTES: u64 = 1_048_576; // 1 MiB
+
+fn read_functions_file(path: &Path) -> Result<String> {
+    let meta = std::fs::metadata(path)?;
+    if meta.len() > MAX_FUNCTION_FILE_BYTES {
+        return Err(GridlineError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Refusing to read {}: functions file too large ({} bytes, max {})",
+                path.display(),
+                meta.len(),
+                MAX_FUNCTION_FILE_BYTES
+            ),
+        )));
+    }
+    Ok(std::fs::read_to_string(path)?)
+}
+
 impl Document {
     /// Load custom Rhai functions from a file (appends to existing functions).
     /// Returns the path loaded, or an error.
     pub fn load_functions(&mut self, path: &Path) -> Result<PathBuf> {
         let path_buf = std::fs::canonicalize(path)?;
-        let content = std::fs::read_to_string(&path_buf)?;
+        let content = read_functions_file(&path_buf)?;
 
         if self.functions_files.contains(&path_buf) {
             // Already loaded: keep current compiled state unchanged.
@@ -55,7 +73,7 @@ impl Document {
         let paths = self.functions_files.clone();
         let mut merged = String::new();
         for (idx, path) in paths.iter().enumerate() {
-            let content = std::fs::read_to_string(path)?;
+            let content = read_functions_file(path)?;
             if idx > 0 {
                 merged.push_str("\n\n");
             }
@@ -202,7 +220,7 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
-    use super::Document;
+    use super::{Document, MAX_FUNCTION_FILE_BYTES};
     use crate::error::GridlineError;
     use gridline_engine::engine::CellRef;
     use std::io::Write;
@@ -286,6 +304,39 @@ mod tests {
 
         let result = Document::with_file(None, vec![bad_path]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_functions_rejects_oversized_file() {
+        let mut doc = Document::new();
+
+        let path = std::env::temp_dir().join(format!(
+            "gridline_oversized_funcs_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+
+        let oversized = "a".repeat(MAX_FUNCTION_FILE_BYTES as usize + 1);
+        std::fs::write(&path, oversized).unwrap();
+
+        let err = doc.load_functions(&path).unwrap_err();
+        match err {
+            GridlineError::Io(io_err) => {
+                assert!(io_err.to_string().contains("too large"));
+            }
+            other => panic!("expected io error for oversized file, got {other:?}"),
+        }
     }
 
     #[test]
