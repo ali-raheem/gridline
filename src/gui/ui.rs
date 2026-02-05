@@ -124,11 +124,14 @@ pub fn draw_top_panel(
             // Commit edit on Enter
             if pressed_enter {
                 let input = app.edit_buffer.clone();
-                let _ = app.set_cell_from_input(&input);
-                state.editing = false;
-                state.request_focus_formula = false;
-                app.move_selection(0, 1, false);
-                state.ensure_selected_visible(&app.selected);
+                if app.set_cell_from_input(&input).is_ok() {
+                    state.editing = false;
+                    state.request_focus_formula = false;
+                    app.move_selection(0, 1, false);
+                    state.ensure_selected_visible(&app.selected);
+                } else {
+                    state.request_focus_formula = true;
+                }
             }
 
             // Cancel edit on Escape
@@ -140,12 +143,18 @@ pub fn draw_top_panel(
 
             // Commit on focus loss (if was editing)
             if resp.lost_focus() {
-                if app.edit_dirty {
+                let committed = if app.edit_dirty {
                     let input = app.edit_buffer.clone();
-                    let _ = app.set_cell_from_input(&input);
+                    app.set_cell_from_input(&input).is_ok()
+                } else {
+                    true
+                };
+                if committed {
+                    state.editing = false;
+                    state.request_focus_formula = false;
+                } else {
+                    state.request_focus_formula = true;
                 }
-                state.editing = false;
-                state.request_focus_formula = false;
             }
         } else {
             // When not editing, show read-only label instead

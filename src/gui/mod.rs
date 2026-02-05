@@ -80,18 +80,13 @@ impl GridlineGuiApp {
             Action::Paste(text) => {
                 // If text is provided (from egui paste event), use it directly
                 if !text.is_empty() {
-                    let count = text.lines().count();
-                    apply_action(&mut self.app, &mut self.state, Action::Paste(text));
-                    self.app.status = format!("✓ Pasted {} cells", count.max(1));
+                    let _ = self.app.paste_from_clipboard(text);
                 } else {
                     // Otherwise try to read from system clipboard
                     if let Some(clipboard_text) =
                         <SystemClipboard as ClipboardProvider>::get_text(&mut self.clipboard)
                     {
-                        let count = clipboard_text.lines().count();
-                        let paste_action = Action::Paste(clipboard_text);
-                        apply_action(&mut self.app, &mut self.state, paste_action);
-                        self.app.status = format!("✓ Pasted {} cells", count.max(1));
+                        let _ = self.app.paste_from_clipboard(clipboard_text);
                     } else {
                         self.app.status = "✗ Paste failed: clipboard empty".to_string();
                     }

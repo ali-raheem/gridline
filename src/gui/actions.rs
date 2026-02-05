@@ -75,9 +75,12 @@ pub fn apply_action(app: &mut GuiApp, state: &mut GuiState, action: Action) {
 
         Action::CommitEdit => {
             let input = app.edit_buffer.clone();
-            let _ = app.set_cell_from_input(&input);
-            state.editing = false;
-            state.request_focus_formula = false;
+            if app.set_cell_from_input(&input).is_ok() {
+                state.editing = false;
+                state.request_focus_formula = false;
+            } else {
+                state.request_focus_formula = true;
+            }
         }
 
         Action::CancelEdit => {
@@ -89,18 +92,18 @@ pub fn apply_action(app: &mut GuiApp, state: &mut GuiState, action: Action) {
         Action::CopySelection => {
             // Note: Actual clipboard set happens in input handler
             // This just prepares the string
-            let _ = app.copy_selection_to_string();
+            app.copy_selection_to_string();
             app.status = format!("Copied {}", app.selection_label());
         }
 
         Action::CutSelection => {
-            let _ = app.copy_selection_to_string();
+            app.copy_selection_to_string();
             app.clear_selection();
             app.status = format!("Cut {}", app.selection_label());
         }
 
         Action::Paste(clipboard_text) => {
-            app.paste_from_clipboard(clipboard_text);
+            let _ = app.paste_from_clipboard(clipboard_text);
         }
 
         Action::ClearSelection => {

@@ -160,61 +160,69 @@ impl GuiApp {
     }
 
     /// Paste clipboard data into selection.
-    pub fn paste_from_clipboard(&mut self, s: String) {
+    pub fn paste_from_clipboard(&mut self, s: String) -> Result<usize, String> {
         let grid = Self::parse_clipboard_grid(&s);
         if grid.is_empty() {
             self.status = "Paste failed: empty clipboard".to_string();
-            return;
+            return Err("empty clipboard".to_string());
         }
 
         let (c1, r1, c2, r2) = self.selection_bounds();
         let sel_rows = r2 - r1 + 1;
         let sel_cols = c2 - c1 + 1;
 
-        let single_value = grid.len() == 1 && grid[0].len() == 1;
-        if single_value && (sel_rows > 1 || sel_cols > 1) {
-            let v = grid[0][0].clone();
-            for r in r1..=r2 {
-                for c in c1..=c2 {
-                    let _ = self.doc.set_cell_from_input(CellRef::new(c, r), &v);
-                }
-            }
-            self.sync_edit_buffer();
-            self.status = format!("Pasted into {}", self.selection_label());
-            return;
-        }
-
         if let Some(clip) = self.internal_clipboard.as_ref()
             && clip.text == s
         {
-            match self.doc.paste_cells(
-                c1,
-                r1,
-                clip.source_col,
-                clip.source_row,
-                &clip.cells,
-            ) {
+            match self
+                .doc
+                .paste_cells(c1, r1, clip.source_col, clip.source_row, &clip.cells)
+            {
                 Ok(pasted) => {
                     self.sync_edit_buffer();
                     self.status =
                         format!("Pasted {} cell(s) into {}", pasted, self.selection_label());
+                    Ok(pasted)
                 }
                 Err(e) => {
                     self.status = format!("Paste failed: {}", e);
+                    Err(e.to_string())
                 }
             }
-            return;
-        }
+        } else {
+            let single_value = grid.len() == 1 && grid[0].len() == 1;
+            let cells = if single_value && (sel_rows > 1 || sel_cols > 1) {
+                let value = Cell::from_input(&grid[0][0]);
+                let mut repeated = Vec::with_capacity(sel_rows * sel_cols);
+                for dr in 0..sel_rows {
+                    for dc in 0..sel_cols {
+                        repeated.push((dc, dr, value.clone()));
+                    }
+                }
+                repeated
+            } else {
+                let mut parsed = Vec::new();
+                for (dr, row) in grid.iter().enumerate() {
+                    for (dc, value) in row.iter().enumerate() {
+                        parsed.push((dc, dr, Cell::from_input(value)));
+                    }
+                }
+                parsed
+            };
 
-        for (dr, row) in grid.iter().enumerate() {
-            for (dc, v) in row.iter().enumerate() {
-                let r = r1 + dr;
-                let c = c1 + dc;
-                let _ = self.doc.set_cell_from_input(CellRef::new(c, r), v);
+            match self.doc.paste_cells(c1, r1, c1, r1, &cells) {
+                Ok(pasted) => {
+                    self.sync_edit_buffer();
+                    self.status =
+                        format!("Pasted {} cell(s) into {}", pasted, self.selection_label());
+                    Ok(pasted)
+                }
+                Err(e) => {
+                    self.status = format!("Paste failed: {}", e);
+                    Err(e.to_string())
+                }
             }
         }
-        self.sync_edit_buffer();
-        self.status = format!("Pasted into {}", self.selection_label());
     }
 
     /// Copy current selection to string format (tab/newline delimited).
@@ -360,12 +368,43 @@ mod tests {
         let mut app = GuiApp::new(doc);
         let copied = app.copy_selection_to_string_and_store();
         app.set_selected(CellRef::new(0, 1), false); // A2
-        app.paste_from_clipboard(copied);
+        app.paste_from_clipboard(copied).unwrap();
 
         let pasted = app.doc.grid.get(&CellRef::new(0, 1)).unwrap();
         match &pasted.contents {
             CellType::Script(s) => assert_eq!(s, "B2"),
             _ => panic!("Expected formula cell"),
         }
+    }
+
+    #[test]
+    fn test_external_paste_rejects_circular_formula() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "=B1").unwrap(); // A1 depends on B1
+
+        let mut app = GuiApp::new(doc);
+        app.set_selected(CellRef::new(1, 0), false); // B1
+        let result = app.paste_from_clipboard("=A1".to_string());
+
+        assert!(result.is_err());
+        assert!(app.doc.grid.get(&CellRef::new(1, 0)).is_none());
+        assert!(app.status.starts_with("Paste failed:"));
+    }
+
+    #[test]
+    fn test_single_value_paste_fills_selection() {
+        let doc = Document::new();
+        let mut app = GuiApp::new(doc);
+        app.selection_anchor = CellRef::new(0, 0);
+        app.selection_end = CellRef::new(1, 1); // 2x2 selection
+        app.selected = CellRef::new(0, 0);
+
+        let pasted = app.paste_from_clipboard("7".to_string()).unwrap();
+
+        assert_eq!(pasted, 4);
+        assert_eq!(app.cell_input_string(&CellRef::new(0, 0)), "7");
+        assert_eq!(app.cell_input_string(&CellRef::new(1, 0)), "7");
+        assert_eq!(app.cell_input_string(&CellRef::new(0, 1)), "7");
+        assert_eq!(app.cell_input_string(&CellRef::new(1, 1)), "7");
     }
 }
