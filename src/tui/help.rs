@@ -6,7 +6,7 @@ use super::keymap::{Action, Binding, Keymap};
 pub fn get_help_text(keymap: &Keymap) -> Vec<String> {
     match keymap {
         Keymap::Vim => vec![
-            "=== Vim Keybindings ===",
+            "Vim Keymap",
             "",
             "Navigation:",
             "  h/j/k/l      Move left/down/up/right",
@@ -39,7 +39,7 @@ pub fn get_help_text(keymap: &Keymap) -> Vec<String> {
         .map(str::to_string)
         .collect(),
         Keymap::Emacs => vec![
-            "=== Emacs Keybindings ===",
+            "Emacs Keymap",
             "",
             "Navigation:",
             "  C-n/C-p      Move down/up",
@@ -76,7 +76,7 @@ pub fn get_help_text(keymap: &Keymap) -> Vec<String> {
 /// Get command help text
 pub fn get_commands_help() -> Vec<String> {
     vec![
-        "=== Commands ===",
+        "Commands",
         "",
         "File:",
         "  :w [file]       Save",
@@ -117,7 +117,7 @@ pub fn get_commands_help() -> Vec<String> {
 
 fn custom_help_text(custom: &super::keymap::CustomKeymap) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
-    lines.push(format!("=== {} Keybindings ===", custom.name));
+    lines.push(format!("{} Keymap", custom.name));
     if let Some(desc) = custom.description.as_ref() {
         lines.push(desc.clone());
     }

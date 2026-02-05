@@ -9,7 +9,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
 };
 use textplots::{AxisBuilder, Chart, LabelBuilder, LabelFormat, LineStyle, Plot, Shape};
 
@@ -386,13 +386,13 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_help_modal(f: &mut Frame, app: &App) {
-    let area = centered_rect(70, 80, f.area());
+    let area = centered_rect(88, 88, f.area());
 
     let modal_style = Style::default().fg(Color::White).bg(Color::Black);
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Help (Esc to close) ")
+        .title(" Help  Esc/q: close ")
         .border_style(Style::default().fg(Color::Green))
         .style(modal_style);
 
@@ -400,7 +400,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     let mut lines: Vec<Line> = Vec::new();
 
     for text in get_help_text(&app.keymap) {
-        let style = if text.starts_with("===") {
+        let style = if text.ends_with("Keymap") {
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD)
@@ -418,7 +418,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     lines.push(Line::from(""));
 
     for text in get_commands_help() {
-        let style = if text.starts_with("===") {
+        let style = if text == "Commands" {
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD)
@@ -434,7 +434,10 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
         lines.push(Line::from(Span::styled(text, style)));
     }
 
-    let paragraph = Paragraph::new(lines).block(block).style(modal_style);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .style(modal_style)
+        .wrap(Wrap { trim: false });
 
     f.render_widget(Clear, area);
     f.render_widget(paragraph, area);
