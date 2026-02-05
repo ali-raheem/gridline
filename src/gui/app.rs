@@ -1,6 +1,7 @@
 //! Core application state and business logic (UI-agnostic).
 
-use gridline_core::{Cell, CellRef, Document};
+use gridline_core::{CellRef, Document};
+use gridline_engine::engine::Cell;
 
 struct InternalClipboard {
     text: String,
