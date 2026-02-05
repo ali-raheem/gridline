@@ -12,10 +12,13 @@ impl Document {
         let content = std::fs::read_to_string(path)?;
 
         let path_buf = path.to_path_buf();
-        let mut new_functions_files = self.functions_files.clone();
-        if !new_functions_files.contains(&path_buf) {
-            new_functions_files.push(path_buf.clone());
+        if self.functions_files.contains(&path_buf) {
+            // Already loaded: keep current compiled state unchanged.
+            return Ok(path_buf);
         }
+
+        let mut new_functions_files = self.functions_files.clone();
+        new_functions_files.push(path_buf.clone());
 
         let new_custom_functions = if let Some(existing) = &self.custom_functions {
             format!("{}\n\n{}", existing, content)
@@ -90,7 +93,20 @@ impl Document {
     /// Load from file
     pub fn load_file(&mut self, path: &Path) -> Result<()> {
         let grid = parse_grd(path)?;
+
+        // Build engine for the new grid first so load is transactional.
+        let (engine, custom_ast, compile_error) = create_engine_with_functions_and_cache(
+            grid.clone(),
+            self.value_cache.clone(),
+            self.custom_functions.as_deref(),
+        );
+        if let Some(err) = compile_error {
+            return Err(GridlineError::RhaiCompile(err));
+        }
+
         self.grid = grid;
+        self.engine = engine;
+        self.custom_ast = custom_ast;
 
         // Clear caches since we're loading a new grid
         self.value_cache.clear();
@@ -103,9 +119,6 @@ impl Document {
                 entry.cached_value = None;
             }
         }
-
-        // Recreate engine because grid was replaced (builtins need new grid reference)
-        let _ = self.recreate_engine_with_functions();
 
         // Rebuild dependencies
         self.rebuild_dependents();
@@ -190,6 +203,7 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::Document;
+    use crate::error::GridlineError;
     use gridline_engine::engine::CellRef;
     use std::io::Write;
 
@@ -313,5 +327,80 @@ mod tests {
 
         doc.set_cell_from_input(CellRef::new(0, 0), "=triple(3)").unwrap();
         assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "9");
+    }
+
+    #[test]
+    fn test_load_functions_same_path_is_idempotent() {
+        let mut doc = Document::new();
+
+        let path = std::env::temp_dir().join(format!(
+            "gridline_idempotent_funcs_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn double(x) {{ x * 2 }}").unwrap();
+        }
+
+        doc.load_functions(&path).unwrap();
+        let before = doc.custom_functions.clone();
+
+        // Loading the same file again should be a no-op, not a duplicate append.
+        doc.load_functions(&path).unwrap();
+        assert_eq!(doc.functions_files.len(), 1);
+        assert_eq!(doc.custom_functions, before);
+
+        doc.set_cell_from_input(CellRef::new(0, 0), "=double(4)").unwrap();
+        assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "8");
+    }
+
+    #[test]
+    fn test_load_file_fails_transactionally_on_custom_function_compile_error() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(2, 2), "42").unwrap(); // C3 existing state
+
+        let grd_path = std::env::temp_dir().join(format!(
+            "gridline_load_file_txn_{}_{}_{:?}.grd",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(grd_path.clone());
+        std::fs::write(&grd_path, "A1: 1\n").unwrap();
+
+        // Simulate corrupted in-memory custom function state.
+        doc.custom_functions = Some("fn broken(x) { x + }".to_string());
+        let old_file_path = doc.file_path.clone();
+
+        let result = doc.load_file(&grd_path);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(GridlineError::RhaiCompile(_))));
+
+        // Ensure existing document state was not replaced.
+        assert!(doc.grid.contains_key(&CellRef::new(2, 2))); // C3 still present
+        assert!(!doc.grid.contains_key(&CellRef::new(0, 0))); // A1 from file not committed
+        assert_eq!(doc.file_path, old_file_path);
     }
 }

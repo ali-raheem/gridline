@@ -102,20 +102,6 @@ impl Document {
         Ok(core)
     }
 
-    /// Recreate the Rhai engine with updated custom functions.
-    /// This is expensive and should only be called when custom functions change.
-    /// Returns any Rhai compilation error message.
-    pub(crate) fn recreate_engine_with_functions(&mut self) -> Option<String> {
-        let (engine, ast, error) = create_engine_with_functions_and_cache(
-            self.grid.clone(),
-            self.value_cache.clone(),
-            self.custom_functions.as_deref(),
-        );
-        self.engine = engine;
-        self.custom_ast = ast;
-        error
-    }
-
     /// Rebuild the reverse dependency map from the grid.
     /// Call this after cells are added, removed, or their formulas change.
     pub(crate) fn rebuild_dependents(&mut self) {

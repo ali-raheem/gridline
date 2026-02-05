@@ -86,6 +86,31 @@ impl Document {
         spilled_from
     }
 
+    /// Apply a historical cell state (undo/redo) with the same overwrite semantics as edits.
+    fn apply_history_cell_state(
+        &mut self,
+        cell_ref: &CellRef,
+        state: Option<Cell>,
+        additionally_dirty: &mut Vec<CellRef>,
+    ) {
+        if let Some(source) = self.prepare_overwrite(cell_ref) {
+            additionally_dirty.push(source);
+        }
+        match state {
+            Some(mut cell) => {
+                // Historical script snapshots may contain stale cache/spill state.
+                if matches!(cell.contents, CellType::Script(_)) {
+                    cell.dirty = true;
+                    cell.cached_value = None;
+                }
+                self.grid.insert(cell_ref.clone(), cell);
+            }
+            None => {
+                self.grid.remove(cell_ref);
+            }
+        }
+    }
+
     /// Push an undo action before modifying a cell
     fn push_undo(&mut self, cell_ref: CellRef, new_cell: Option<Cell>) {
         let old_cell = self.grid.get(&cell_ref).map(|r| r.clone());
@@ -364,20 +389,17 @@ impl Document {
                 }));
 
                 let cell_ref = action.cell_ref.clone();
+                let mut additionally_dirty = Vec::new();
 
                 // Restore old state
-                match action.old_cell {
-                    Some(cell) => {
-                        self.grid.insert(action.cell_ref, cell);
-                    }
-                    None => {
-                        self.grid.remove(&action.cell_ref);
-                    }
-                }
+                self.apply_history_cell_state(&cell_ref, action.old_cell, &mut additionally_dirty);
 
                 // Rebuild dependencies (DashMap shares data, so builtins already see updates)
                 self.rebuild_dependents();
                 self.mark_dependents_dirty(&cell_ref);
+                for spill_source in additionally_dirty {
+                    self.mark_dependents_dirty(&spill_source);
+                }
             }
             UndoEntry::Batch(actions) => {
                 // Build inverse batch for redo
@@ -397,21 +419,22 @@ impl Document {
                 self.redo_stack.push(UndoEntry::Batch(redo_actions));
 
                 // Restore old states
+                let mut additionally_dirty = Vec::new();
                 for action in actions {
-                    match action.old_cell {
-                        Some(cell) => {
-                            self.grid.insert(action.cell_ref, cell);
-                        }
-                        None => {
-                            self.grid.remove(&action.cell_ref);
-                        }
-                    }
+                    self.apply_history_cell_state(
+                        &action.cell_ref,
+                        action.old_cell,
+                        &mut additionally_dirty,
+                    );
                 }
 
                 // Rebuild dependencies once
                 self.rebuild_dependents();
                 for cell_ref in affected_cells {
                     self.mark_dependents_dirty(&cell_ref);
+                }
+                for spill_source in additionally_dirty {
+                    self.mark_dependents_dirty(&spill_source);
                 }
             }
         }
@@ -433,20 +456,17 @@ impl Document {
                 }));
 
                 let cell_ref = action.cell_ref.clone();
+                let mut additionally_dirty = Vec::new();
 
                 // Apply new state
-                match action.new_cell {
-                    Some(cell) => {
-                        self.grid.insert(action.cell_ref, cell);
-                    }
-                    None => {
-                        self.grid.remove(&action.cell_ref);
-                    }
-                }
+                self.apply_history_cell_state(&cell_ref, action.new_cell, &mut additionally_dirty);
 
                 // Rebuild dependencies (DashMap shares data, so builtins already see updates)
                 self.rebuild_dependents();
                 self.mark_dependents_dirty(&cell_ref);
+                for spill_source in additionally_dirty {
+                    self.mark_dependents_dirty(&spill_source);
+                }
             }
             UndoEntry::Batch(actions) => {
                 // Build inverse batch for undo
@@ -466,21 +486,22 @@ impl Document {
                 self.undo_stack.push(UndoEntry::Batch(undo_actions));
 
                 // Apply new states
+                let mut additionally_dirty = Vec::new();
                 for action in actions {
-                    match action.new_cell {
-                        Some(cell) => {
-                            self.grid.insert(action.cell_ref, cell);
-                        }
-                        None => {
-                            self.grid.remove(&action.cell_ref);
-                        }
-                    }
+                    self.apply_history_cell_state(
+                        &action.cell_ref,
+                        action.new_cell,
+                        &mut additionally_dirty,
+                    );
                 }
 
                 // Rebuild dependencies once
                 self.rebuild_dependents();
                 for cell_ref in affected_cells {
                     self.mark_dependents_dirty(&cell_ref);
+                }
+                for spill_source in additionally_dirty {
+                    self.mark_dependents_dirty(&spill_source);
                 }
             }
         }
@@ -654,5 +675,49 @@ mod tests {
         let source = CellRef::new(0, 0);
         let source_cell = core.grid.get(&source).unwrap();
         assert!(source_cell.dirty);
+    }
+
+    #[test]
+    fn test_undo_restores_spill_state_for_formula_source() {
+        let mut core = Document::new();
+
+        core.set_cell_from_input(CellRef::new(1, 0), "1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
+        core.set_cell_from_input(CellRef::new(1, 2), "3").unwrap(); // B3
+        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
+            .unwrap(); // A1 spills to A2:A3
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+        assert!(core.spill_sources.contains_key(&CellRef::new(0, 1)));
+
+        core.set_cell_from_input(CellRef::new(0, 0), "99").unwrap();
+        assert!(!core.spill_sources.contains_key(&CellRef::new(0, 1)));
+
+        core.undo().unwrap();
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "1");
+        assert!(core.spill_sources.contains_key(&CellRef::new(0, 1)));
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "2");
+    }
+
+    #[test]
+    fn test_redo_clears_spill_state_when_restoring_scalar() {
+        let mut core = Document::new();
+
+        core.set_cell_from_input(CellRef::new(1, 0), "1").unwrap(); // B1
+        core.set_cell_from_input(CellRef::new(1, 1), "2").unwrap(); // B2
+        core.set_cell_from_input(CellRef::new(1, 2), "3").unwrap(); // B3
+        core.set_cell_from_input(CellRef::new(0, 0), "=VEC(B1:B3)")
+            .unwrap(); // A1 spills to A2:A3
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+
+        core.set_cell_from_input(CellRef::new(0, 0), "99").unwrap();
+        core.undo().unwrap();
+        // Recreate spill state before redo.
+        let _ = core.get_cell_display(&CellRef::new(0, 0));
+        assert!(core.spill_sources.contains_key(&CellRef::new(0, 1)));
+
+        core.redo().unwrap();
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "99");
+        assert!(!core.spill_sources.contains_key(&CellRef::new(0, 1)));
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "");
     }
 }
