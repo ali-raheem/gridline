@@ -98,7 +98,10 @@ impl Document {
         &mut self,
         mods: &HashMap<
             gridline_engine::engine::CellRef,
-            (Option<gridline_engine::engine::Cell>, Option<gridline_engine::engine::Cell>),
+            (
+                Option<gridline_engine::engine::Cell>,
+                Option<gridline_engine::engine::Cell>,
+            ),
         >,
     ) {
         for (cell_ref, (old_cell, _new_cell)) in mods {
@@ -149,23 +152,27 @@ impl Document {
         let result = eval_with_functions_script(
             &engine,
             &full_script,
-            custom_ast
-                .as_ref()
-                .and(self.custom_functions.as_deref()),
+            custom_ast.as_ref().and(self.custom_functions.as_deref()),
         );
 
         let return_value = match result {
             Ok(val) if !val.is_unit() => Some(val.to_string()),
             Ok(_) => None,
             Err(e) => {
-                let mods = modifications.lock().unwrap();
+                let mods = modifications.lock().map_err(|_| {
+                    GridlineError::RhaiCompile(
+                        "internal error: script state lock poisoned".to_string(),
+                    )
+                })?;
                 self.rollback_script_modifications(&mods);
                 return Err(GridlineError::Rhai(e));
             }
         };
 
         // Collect modifications and create undo batch.
-        let mods = modifications.lock().unwrap();
+        let mods = modifications.lock().map_err(|_| {
+            GridlineError::RhaiCompile("internal error: script state lock poisoned".to_string())
+        })?;
         for (cell_ref, (_old_cell, new_cell)) in mods.iter() {
             if matches!(new_cell, Some(cell) if matches!(cell.contents, CellType::Script(_)))
                 && detect_cycle(cell_ref, &self.grid).is_some()

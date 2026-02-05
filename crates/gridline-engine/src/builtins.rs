@@ -127,6 +127,14 @@ fn invalid_arg(message: &str) -> Box<EvalAltResult> {
     EvalAltResult::ErrorRuntime(message.into(), Position::NONE).into()
 }
 
+fn lock_script_modifications<'a>(
+    modifications: &'a ScriptModifications,
+) -> Result<ScriptModificationGuard<'a>, Box<EvalAltResult>> {
+    modifications
+        .lock()
+        .map_err(|_| invalid_arg("internal error: script state lock poisoned"))
+}
+
 const MAX_COORD_INDEX: usize = 1_000_000;
 const MAX_RANGE_CELLS: usize = 1_000_000;
 
@@ -279,10 +287,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let cache_cell = value_cache.clone();
     engine.register_fn(
         "CELL",
-        move |ctx: NativeCallContext,
-              col: i64,
-              row: i64|
-              -> Result<f64, Box<EvalAltResult>> {
+        move |ctx: NativeCallContext, col: i64, row: i64| -> Result<f64, Box<EvalAltResult>> {
             let col = to_grid_index(col, "col")?;
             let row = to_grid_index(row, "row")?;
             let cell_ref = CellRef::new(col, row);
@@ -323,10 +328,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     let cache_value = value_cache.clone();
     engine.register_fn(
         "VALUE",
-        move |ctx: NativeCallContext,
-              col: i64,
-              row: i64|
-              -> Result<Dynamic, Box<EvalAltResult>> {
+        move |ctx: NativeCallContext, col: i64, row: i64| -> Result<Dynamic, Box<EvalAltResult>> {
             let col = to_grid_index(col, "col")?;
             let row = to_grid_index(row, "row")?;
             let cell_ref = CellRef::new(col, row);
@@ -903,7 +905,9 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
 
 /// Tracks cell modifications made by script builtins.
 /// Maps CellRef -> (old_cell, new_cell) to support undo.
-pub type ScriptModifications = Arc<Mutex<HashMap<CellRef, (Option<Cell>, Option<Cell>)>>>;
+type ScriptModificationMap = HashMap<CellRef, (Option<Cell>, Option<Cell>)>;
+type ScriptModificationGuard<'a> = std::sync::MutexGuard<'a, ScriptModificationMap>;
+pub type ScriptModifications = Arc<Mutex<ScriptModificationMap>>;
 
 /// Register script-only write builtins for script execution.
 /// These are NOT available in cell formulas, only when running scripts via :call or :rhai.
@@ -922,11 +926,11 @@ pub fn register_script_builtins(
             let row = to_grid_index(row, "row")?;
             let cell_ref = CellRef::new(col, row);
             let new_cell = dynamic_to_cell(value);
+            let mut mods = lock_script_modifications(&mods_set)?;
 
             let old_cell = grid_set.get(&cell_ref).map(|r| r.clone());
             grid_set.insert(cell_ref.clone(), new_cell.clone());
 
-            let mut mods = mods_set.lock().unwrap();
             mods.entry(cell_ref)
                 .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
                 .or_insert((old_cell, Some(new_cell)));
@@ -947,12 +951,12 @@ pub fn register_script_builtins(
                     cell_str
                 )));
             };
+            let mut mods = lock_script_modifications(&mods_set_a1)?;
             let old_cell = grid_set_a1.get(&cell_ref).map(|r| r.clone());
 
             let new_cell = dynamic_to_cell(value);
             grid_set_a1.insert(cell_ref.clone(), new_cell.clone());
 
-            let mut mods = mods_set_a1.lock().unwrap();
             mods.entry(cell_ref)
                 .and_modify(|(_, nc)| *nc = Some(new_cell.clone()))
                 .or_insert((old_cell, Some(new_cell)));
@@ -970,10 +974,10 @@ pub fn register_script_builtins(
             let col = to_grid_index(col, "col")?;
             let row = to_grid_index(row, "row")?;
             let cell_ref = CellRef::new(col, row);
+            let mut mods = lock_script_modifications(&mods_clear)?;
             let old_cell = grid_clear.get(&cell_ref).map(|r| r.clone());
             grid_clear.remove(&cell_ref);
 
-            let mut mods = mods_clear.lock().unwrap();
             mods.entry(cell_ref)
                 .and_modify(|(_, nc)| *nc = None)
                 .or_insert((old_cell, None));
@@ -994,10 +998,10 @@ pub fn register_script_builtins(
                     cell_str
                 )));
             };
+            let mut mods = lock_script_modifications(&mods_clear_a1)?;
             let old_cell = grid_clear_a1.get(&cell_ref).map(|r| r.clone());
             grid_clear_a1.remove(&cell_ref);
 
-            let mut mods = mods_clear_a1.lock().unwrap();
             mods.entry(cell_ref)
                 .and_modify(|(_, nc)| *nc = None)
                 .or_insert((old_cell, None));
@@ -1021,7 +1025,7 @@ pub fn register_script_builtins(
 
             let new_cell = dynamic_to_cell(value);
 
-            let mut mods = mods_set_range.lock().unwrap();
+            let mut mods = lock_script_modifications(&mods_set_range)?;
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(col, row);
@@ -1046,7 +1050,7 @@ pub fn register_script_builtins(
         move |c1: i64, r1: i64, c2: i64, r2: i64| -> Result<(), Box<EvalAltResult>> {
             let (min_row, max_row, min_col, max_col) = normalize_range_coords(c1, r1, c2, r2)?;
 
-            let mut mods = mods_clear_range.lock().unwrap();
+            let mut mods = lock_script_modifications(&mods_clear_range)?;
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
                     let cell_ref = CellRef::new(col, row);
