@@ -440,15 +440,20 @@ impl App {
 
         let base_row = self.cursor_row;
         let base_col = self.cursor_col;
-        let pasted = self.core.paste_cells(
+        match self.core.paste_cells(
             base_col,
             base_row,
             clipboard.source_col,
             clipboard.source_row,
             &clipboard.cells,
-        );
-
-        self.status_message = format!("Pasted {} cells", pasted);
+        ) {
+            Ok(pasted) => {
+                self.status_message = format!("Pasted {} cells", pasted);
+            }
+            Err(e) => {
+                self.status_message = format!("Paste failed: {}", e);
+            }
+        }
     }
 
     /// Get width for a specific column

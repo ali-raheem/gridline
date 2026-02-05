@@ -518,17 +518,13 @@ impl Document {
         source_base_col: usize,
         source_base_row: usize,
         clipboard_cells: &[(usize, usize, Cell)],
-    ) -> usize {
+    ) -> Result<usize> {
         let delta_col = base_col as isize - source_base_col as isize;
         let delta_row = base_row as isize - source_base_row as isize;
-        let mut pasted_cells = Vec::new();
-        let mut additionally_dirty = Vec::new();
+        let mut prepared = Vec::new();
 
         for (rel_col, rel_row, cell) in clipboard_cells {
             let target = CellRef::new(base_col + rel_col, base_row + rel_row);
-            if let Some(spill_source) = self.prepare_overwrite(&target) {
-                additionally_dirty.push(spill_source);
-            }
 
             let pasted_cell = match &cell.contents {
                 CellType::Script(formula) => {
@@ -537,14 +533,55 @@ impl Document {
                 }
                 _ => cell.clone(),
             };
+            prepared.push((target, pasted_cell));
+        }
 
+        if prepared.is_empty() {
+            return Ok(0);
+        }
+
+        // Validate cycle safety transactionally before mutating spill/cache/undo state.
+        let mut old_cells: std::collections::HashMap<CellRef, Option<Cell>> =
+            std::collections::HashMap::new();
+        for (target, _) in &prepared {
+            old_cells
+                .entry(target.clone())
+                .or_insert_with(|| self.grid.get(target).map(|r| r.clone()));
+        }
+        for (target, pasted_cell) in &prepared {
+            self.grid.insert(target.clone(), pasted_cell.clone());
+        }
+
+        let has_cycle = prepared.iter().any(|(target, pasted_cell)| {
+            matches!(pasted_cell.contents, CellType::Script(_))
+                && gridline_engine::engine::detect_cycle(target, &self.grid).is_some()
+        });
+
+        // Restore original grid state after validation pass.
+        for (target, old_cell) in old_cells {
+            match old_cell {
+                Some(cell) => {
+                    self.grid.insert(target, cell);
+                }
+                None => {
+                    self.grid.remove(&target);
+                }
+            }
+        }
+
+        if has_cycle {
+            return Err(GridlineError::CircularDependency);
+        }
+
+        let mut pasted_cells = Vec::new();
+        let mut additionally_dirty = Vec::new();
+        for (target, pasted_cell) in prepared {
+            if let Some(spill_source) = self.prepare_overwrite(&target) {
+                additionally_dirty.push(spill_source);
+            }
             self.push_undo(target.clone(), Some(pasted_cell.clone()));
             self.grid.insert(target.clone(), pasted_cell);
             pasted_cells.push(target);
-        }
-
-        if pasted_cells.is_empty() {
-            return 0;
         }
 
         self.modified = true;
@@ -560,14 +597,15 @@ impl Document {
             self.mark_dependents_dirty(&spill_source);
         }
 
-        count
+        Ok(count)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Document;
-    use gridline_engine::engine::{CellRef, CellType};
+    use crate::error::GridlineError;
+    use gridline_engine::engine::{Cell, CellRef, CellType};
 
     #[test]
     fn test_delete_column_clears_spill_state() {
@@ -632,7 +670,7 @@ mod tests {
 
         // Paste B1 onto A1.
         let cell = core.grid.get(&CellRef::new(1, 0)).unwrap().clone();
-        let pasted = core.paste_cells(0, 0, 1, 0, &[(0, 0, cell)]);
+        let pasted = core.paste_cells(0, 0, 1, 0, &[(0, 0, cell)]).unwrap();
         assert_eq!(pasted, 1);
 
         // Spill state must be removed and dependents must observe new value.
@@ -648,7 +686,7 @@ mod tests {
         core.set_cell_from_input(CellRef::new(0, 0), "=B1").unwrap(); // A1
 
         let cell = core.grid.get(&CellRef::new(0, 0)).unwrap().clone();
-        core.paste_cells(0, 1, 0, 0, &[(0, 0, cell)]); // paste to A2
+        core.paste_cells(0, 1, 0, 0, &[(0, 0, cell)]).unwrap(); // paste to A2
 
         let pasted = core.grid.get(&CellRef::new(0, 1)).unwrap();
         match &pasted.contents {
@@ -785,5 +823,20 @@ mod tests {
         core.redo().unwrap();
         assert!(core.modified);
         assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "1");
+    }
+
+    #[test]
+    fn test_paste_rejects_circular_dependency_transactionally() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(1, 0), "7").unwrap(); // B1 baseline
+
+        let cycle_cell = Cell::new_script("A1");
+        let result = core.paste_cells(0, 0, 0, 0, &[(0, 0, cycle_cell)]);
+        assert!(matches!(result, Err(GridlineError::CircularDependency)));
+
+        // Target was untouched.
+        assert!(core.grid.get(&CellRef::new(0, 0)).is_none());
+        // Existing unrelated cells remain unchanged.
+        assert_eq!(core.get_cell_display(&CellRef::new(1, 0)), "7");
     }
 }

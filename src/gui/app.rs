@@ -187,15 +187,22 @@ impl GuiApp {
         if let Some(clip) = self.internal_clipboard.as_ref()
             && clip.text == s
         {
-            let pasted = self.doc.paste_cells(
+            match self.doc.paste_cells(
                 c1,
                 r1,
                 clip.source_col,
                 clip.source_row,
                 &clip.cells,
-            );
-            self.sync_edit_buffer();
-            self.status = format!("Pasted {} cell(s) into {}", pasted, self.selection_label());
+            ) {
+                Ok(pasted) => {
+                    self.sync_edit_buffer();
+                    self.status =
+                        format!("Pasted {} cell(s) into {}", pasted, self.selection_label());
+                }
+                Err(e) => {
+                    self.status = format!("Paste failed: {}", e);
+                }
+            }
             return;
         }
 
