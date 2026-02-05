@@ -5,8 +5,22 @@ use gridline_engine::engine::{Cell, CellRef, Grid};
 use std::fs;
 use std::path::Path;
 
+const MAX_GRD_FILE_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
+
 /// Parse a .grd file and return a Grid
 pub fn parse_grd(path: &Path) -> Result<Grid> {
+    let meta = fs::metadata(path)?;
+    if meta.len() > MAX_GRD_FILE_BYTES {
+        return Err(GridlineError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Refusing to read {}: .grd file too large ({} bytes, max {})",
+                path.display(),
+                meta.len(),
+                MAX_GRD_FILE_BYTES
+            ),
+        )));
+    }
     let content = fs::read_to_string(path)?;
     parse_grd_content(&content)
 }
@@ -178,5 +192,37 @@ B1: 100
 "#;
         let grid = parse_grd_content(content).unwrap();
         assert_eq!(grid.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_grd_rejects_oversized_file() {
+        let path = std::env::temp_dir().join(format!(
+            "gridline_parse_grd_oversized_{}_{}_{:?}.grd",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+        std::fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_GRD_FILE_BYTES + 1)
+            .unwrap();
+
+        let err = parse_grd(&path).unwrap_err();
+        match err {
+            GridlineError::Io(io_err) => {
+                assert!(io_err.to_string().contains("too large"));
+            }
+            other => panic!("expected io error, got {other:?}"),
+        }
     }
 }

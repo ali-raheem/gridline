@@ -6,8 +6,22 @@ use gridline_engine::engine::{Cell, CellRef};
 use std::io::Write;
 use std::path::Path;
 
+const MAX_CSV_FILE_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
+
 /// Parse a CSV file into cells, starting at the given offset
 pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<(CellRef, Cell)>> {
+    let meta = std::fs::metadata(path)?;
+    if meta.len() > MAX_CSV_FILE_BYTES {
+        return Err(GridlineError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Refusing to read {}: CSV file too large ({} bytes, max {})",
+                path.display(),
+                meta.len(),
+                MAX_CSV_FILE_BYTES
+            ),
+        )));
+    }
     let content = std::fs::read_to_string(path)?;
     let mut cells = Vec::new();
 
@@ -464,6 +478,38 @@ mod tests {
                 assert!(message.contains("row index overflow"));
             }
             other => panic!("expected parse error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_csv_rejects_oversized_file() {
+        let input_path = std::env::temp_dir().join(format!(
+            "gridline_parse_csv_oversized_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(input_path.clone());
+        std::fs::File::create(&input_path)
+            .unwrap()
+            .set_len(MAX_CSV_FILE_BYTES + 1)
+            .unwrap();
+
+        let err = parse_csv(&input_path, 0, 0).unwrap_err();
+        match err {
+            GridlineError::Io(io_err) => {
+                assert!(io_err.to_string().contains("too large"));
+            }
+            other => panic!("expected io error, got {other:?}"),
         }
     }
 }
