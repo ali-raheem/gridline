@@ -213,10 +213,12 @@ impl Document {
     ) -> Result<usize> {
         let mut count = 0;
         for (row_idx, line) in csv_content.lines().enumerate() {
-            for (col_idx, field) in crate::storage::csv::parse_csv_line(line)
-                .into_iter()
-                .enumerate()
-            {
+            let fields =
+                crate::storage::csv::parse_csv_line(line).map_err(|message| GridlineError::Parse {
+                    line: row_idx + 1,
+                    message: message.to_string(),
+                })?;
+            for (col_idx, field) in fields.into_iter().enumerate() {
                 if field.is_empty() {
                     continue;
                 }

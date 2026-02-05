@@ -30,7 +30,11 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
             line: row_idx + 1,
             message: "CSV row index overflow from import offset".to_string(),
         })?;
-        for (col_idx, field) in parse_csv_line(line).into_iter().enumerate() {
+        let fields = parse_csv_line(line).map_err(|message| GridlineError::Parse {
+            line: row_idx + 1,
+            message: message.to_string(),
+        })?;
+        for (col_idx, field) in fields.into_iter().enumerate() {
             if field.is_empty() {
                 continue;
             }
@@ -48,7 +52,7 @@ pub fn parse_csv(path: &Path, start_col: usize, start_row: usize) -> Result<Vec<
 }
 
 /// Parse a single CSV line, handling quoted fields
-pub(crate) fn parse_csv_line(line: &str) -> Vec<String> {
+pub(crate) fn parse_csv_line(line: &str) -> std::result::Result<Vec<String>, &'static str> {
     let mut fields = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
@@ -87,12 +91,15 @@ pub(crate) fn parse_csv_line(line: &str) -> Vec<String> {
             }
         }
     }
+    if in_quotes {
+        return Err("unterminated quoted field");
+    }
     if field_was_quoted {
         fields.push(current);
     } else {
         fields.push(current.trim().to_string());
     }
-    fields
+    Ok(fields)
 }
 
 /// Parse a CSV field into an appropriate Cell type
@@ -211,13 +218,13 @@ mod tests {
 
     #[test]
     fn test_parse_csv_line_simple() {
-        assert_eq!(parse_csv_line("a,b,c"), vec!["a", "b", "c"]);
+        assert_eq!(parse_csv_line("a,b,c").unwrap(), vec!["a", "b", "c"]);
     }
 
     #[test]
     fn test_parse_csv_line_quoted() {
         assert_eq!(
-            parse_csv_line(r#"a,"hello, world",c"#),
+            parse_csv_line(r#"a,"hello, world",c"#).unwrap(),
             vec!["a", "hello, world", "c"]
         );
     }
@@ -225,7 +232,7 @@ mod tests {
     #[test]
     fn test_parse_csv_line_quoted_preserves_whitespace() {
         assert_eq!(
-            parse_csv_line(r#""  keep me  ",x"#),
+            parse_csv_line(r#""  keep me  ",x"#).unwrap(),
             vec!["  keep me  ", "x"]
         );
     }
@@ -233,9 +240,15 @@ mod tests {
     #[test]
     fn test_parse_csv_line_escaped_quotes() {
         assert_eq!(
-            parse_csv_line(r#"a,"say ""hello""",c"#),
+            parse_csv_line(r#"a,"say ""hello""",c"#).unwrap(),
             vec!["a", r#"say "hello""#, "c"]
         );
+    }
+
+    #[test]
+    fn test_parse_csv_line_rejects_unterminated_quote() {
+        let err = parse_csv_line(r#""unterminated"#).unwrap_err();
+        assert_eq!(err, "unterminated quoted field");
     }
 
     #[test]
@@ -510,6 +523,36 @@ mod tests {
                 assert!(io_err.to_string().contains("too large"));
             }
             other => panic!("expected io error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_csv_rejects_malformed_quoted_line() {
+        let input_path = std::env::temp_dir().join(format!(
+            "gridline_parse_csv_bad_quote_{}_{}_{:?}.csv",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(input_path.clone());
+        std::fs::write(&input_path, "\"unterminated").unwrap();
+
+        let err = parse_csv(&input_path, 0, 0).unwrap_err();
+        match err {
+            GridlineError::Parse { line, message } => {
+                assert_eq!(line, 1);
+                assert!(message.contains("unterminated quoted field"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
         }
     }
 }
