@@ -233,19 +233,28 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
 
     let (mods, key_part) = if !trimmed.contains('-') {
         (KeyModifiers::empty(), trimmed)
-    } else if let Some(mod_str) = trimmed.strip_suffix('-') {
-        let mod_str = mod_str.trim_end_matches('-');
-        if mod_str.is_empty() {
-            return Err("missing modifier before '-'".to_string());
-        }
-        let modifiers = parse_modifiers(mod_str)?;
-        (modifiers, "-")
     } else {
-        let mut split = trimmed.rsplitn(2, '-');
-        let key_part = split.next().ok_or_else(|| "empty key".to_string())?;
-        let mod_str = split.next().unwrap_or_default();
-        let modifiers = parse_modifiers(mod_str)?;
-        (modifiers, key_part)
+        let parts: Vec<&str> = trimmed.split('-').collect();
+        let dash_key_syntax = parts.len() >= 3
+            && parts[parts.len() - 1].is_empty()
+            && parts[parts.len() - 2].is_empty();
+
+        if dash_key_syntax {
+            let modifier_parts = &parts[..parts.len() - 2];
+            if modifier_parts.iter().all(|part| part.trim().is_empty()) {
+                return Err("missing modifier before '-'".to_string());
+            }
+            let modifiers = parse_modifiers_parts(modifier_parts)?;
+            (modifiers, "-")
+        } else {
+            if parts.last().is_some_and(|part| part.trim().is_empty()) {
+                return Err("missing key after modifier list".to_string());
+            }
+            let key_part = parts.last().ok_or_else(|| "empty key".to_string())?;
+            let modifier_parts = &parts[..parts.len() - 1];
+            let modifiers = parse_modifiers_parts(modifier_parts)?;
+            (modifiers, *key_part)
+        }
     };
 
     let key = parse_key_code(key_part)?;
@@ -255,15 +264,16 @@ fn parse_key_combo(input: &str) -> Result<KeyCombo, String> {
     })
 }
 
-fn parse_modifiers(input: &str) -> Result<KeyModifiers, String> {
+fn parse_modifiers_parts(parts: &[&str]) -> Result<KeyModifiers, String> {
+    if parts.is_empty() {
+        return Err("empty modifier".to_string());
+    }
     let mut modifiers = KeyModifiers::empty();
-    let mut seen_any = false;
-    for part in input.split('-') {
+    for part in parts {
         let raw = part.trim();
         if raw.is_empty() {
             return Err("empty modifier segment".to_string());
         }
-        seen_any = true;
         let norm = raw.to_ascii_lowercase();
         let flag = match norm.as_str() {
             "c" | "ctrl" | "control" => KeyModifiers::CONTROL,
@@ -277,9 +287,6 @@ fn parse_modifiers(input: &str) -> Result<KeyModifiers, String> {
             return Err(format!("duplicate modifier '{}'", raw));
         }
         modifiers.insert(flag);
-    }
-    if !seen_any {
-        return Err("empty modifier".to_string());
     }
     Ok(modifiers)
 }
@@ -409,6 +416,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_key_combo_ctrl_alt_dash() {
+        let combo = parse_key_combo("C-M--").expect("combo");
+        assert_eq!(combo.code, KeyCode::Char('-'));
+        assert!(combo.modifiers.contains(KeyModifiers::CONTROL));
+        assert!(combo.modifiers.contains(KeyModifiers::ALT));
+    }
+
+    #[test]
     fn parse_key_combo_unicode_char() {
         let combo = parse_key_combo("é").expect("combo");
         assert_eq!(combo.code, KeyCode::Char('é'));
@@ -441,9 +456,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_key_combo_rejects_single_trailing_dash_after_modifiers() {
+        let err = parse_key_combo("C-M-").unwrap_err();
+        assert!(err.contains("missing key"));
+    }
+
+    #[test]
     fn parse_key_combo_rejects_duplicate_modifier() {
         let err = parse_key_combo("C-C-s").unwrap_err();
         assert!(err.contains("duplicate modifier"));
+    }
+
+    #[test]
+    fn parse_key_combo_rejects_extra_dash_segments() {
+        let err = parse_key_combo("C-M---").unwrap_err();
+        assert!(err.contains("empty modifier segment"));
     }
 
     #[test]
