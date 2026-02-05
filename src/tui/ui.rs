@@ -389,20 +389,33 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     let area = centered_rect(88, 88, f.area());
 
     let modal_style = Style::default().fg(Color::White).bg(Color::Black);
-    let keymap_title = match &app.keymap {
-        super::keymap::Keymap::Vim => "Vim Keymap",
-        super::keymap::Keymap::Emacs => "Emacs Keymap",
-        super::keymap::Keymap::Custom(custom) => custom.name.as_str(),
-    };
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" {} ", keymap_title))
+        .title(" About Gridline ")
         .border_style(Style::default().fg(Color::Green))
         .style(modal_style);
 
-    // Combine keybindings and commands help
+    // Combine about, keybindings, and commands help
     let mut lines: Vec<Line> = Vec::new();
+
+    for text in get_about_help() {
+        let style = if text == "About Gridline" {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if text.starts_with("  ") {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        };
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+
+    // Add separator
+    lines.push(Line::from(""));
 
     for text in get_help_text(&app.keymap) {
         let style = if text.starts_with("  ") {
@@ -420,24 +433,6 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
 
     for text in get_commands_help() {
         let style = if text == "Commands" {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
-        } else if text.starts_with("  ") {
-            Style::default().fg(Color::White)
-        } else {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-        };
-        lines.push(Line::from(Span::styled(text, style)));
-    }
-
-    // Add separator
-    lines.push(Line::from(""));
-
-    for text in get_about_help() {
-        let style = if text == "About Gridline" {
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD)
