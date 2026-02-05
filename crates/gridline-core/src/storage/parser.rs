@@ -6,6 +6,8 @@ use std::fs;
 use std::path::Path;
 
 const MAX_GRD_FILE_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
+const MAX_GRD_LINES: usize = 200_000;
+const MAX_GRD_CELLS: usize = 100_000;
 
 /// Parse a .grd file and return a Grid
 pub fn parse_grd(path: &Path) -> Result<Grid> {
@@ -28,8 +30,16 @@ pub fn parse_grd(path: &Path) -> Result<Grid> {
 /// Parse .grd content from a string
 pub fn parse_grd_content(content: &str) -> Result<Grid> {
     let grid: Grid = std::sync::Arc::new(dashmap::DashMap::new());
+    let mut parsed_cells = 0usize;
 
     for (line_num, line) in content.lines().enumerate() {
+        if line_num + 1 > MAX_GRD_LINES {
+            return Err(GridlineError::Parse {
+                line: line_num + 1,
+                message: format!("Too many lines in .grd file (max {})", MAX_GRD_LINES),
+            });
+        }
+
         let line = line.trim();
 
         // Skip empty lines and comments
@@ -52,6 +62,14 @@ pub fn parse_grd_content(content: &str) -> Result<Grid> {
             line: line_num + 1,
             message: format!("Invalid cell reference: {}", cell_ref_str),
         })?;
+
+        parsed_cells += 1;
+        if parsed_cells > MAX_GRD_CELLS {
+            return Err(GridlineError::Parse {
+                line: line_num + 1,
+                message: format!("Too many cells in .grd file (max {})", MAX_GRD_CELLS),
+            });
+        }
 
         let cell = parse_cell_value(value_str, line_num + 1)?;
         grid.insert(cell_ref, cell);
@@ -223,6 +241,32 @@ B1: 100
                 assert!(io_err.to_string().contains("too large"));
             }
             other => panic!("expected io error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_grd_content_rejects_excessive_lines() {
+        let content = "#\n".repeat(MAX_GRD_LINES + 1);
+        let err = parse_grd_content(&content).unwrap_err();
+        match err {
+            GridlineError::Parse { line, message } => {
+                assert_eq!(line, MAX_GRD_LINES + 1);
+                assert!(message.contains("Too many lines"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_grd_content_rejects_excessive_cells() {
+        let content = "A1: 1\n".repeat(MAX_GRD_CELLS + 1);
+        let err = parse_grd_content(&content).unwrap_err();
+        match err {
+            GridlineError::Parse { line, message } => {
+                assert_eq!(line, MAX_GRD_CELLS + 1);
+                assert!(message.contains("Too many cells"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
         }
     }
 }
