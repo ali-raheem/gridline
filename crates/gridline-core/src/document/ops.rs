@@ -438,6 +438,7 @@ impl Document {
                 }
             }
         }
+        self.modified = true;
         Ok(())
     }
 
@@ -505,6 +506,7 @@ impl Document {
                 }
             }
         }
+        self.modified = true;
         Ok(())
     }
 
@@ -719,5 +721,69 @@ mod tests {
         assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "99");
         assert!(!core.spill_sources.contains_key(&CellRef::new(0, 1)));
         assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "");
+    }
+
+    #[test]
+    fn test_undo_after_save_marks_document_modified() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "1").unwrap();
+
+        let save_path = std::env::temp_dir().join(format!(
+            "gridline_undo_modified_{}_{}_{:?}.grd",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(save_path.clone());
+        core.file_path = Some(save_path);
+        core.save_file().unwrap();
+        assert!(!core.modified);
+
+        core.undo().unwrap();
+        assert!(core.modified);
+        assert!(core.grid.get(&CellRef::new(0, 0)).is_none());
+    }
+
+    #[test]
+    fn test_redo_after_save_marks_document_modified() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "1").unwrap();
+
+        let save_path = std::env::temp_dir().join(format!(
+            "gridline_redo_modified_{}_{}_{:?}.grd",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(save_path.clone());
+        core.file_path = Some(save_path);
+        core.save_file().unwrap();
+        assert!(!core.modified);
+
+        core.undo().unwrap();
+        core.save_file().unwrap();
+        assert!(!core.modified);
+
+        core.redo().unwrap();
+        assert!(core.modified);
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "1");
     }
 }
