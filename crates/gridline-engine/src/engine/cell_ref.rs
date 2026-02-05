@@ -15,6 +15,7 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::sync::OnceLock;
 
 /// A reference to a cell by column and row indices (0-indexed).
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -36,8 +37,7 @@ impl CellRef {
     }
 
     fn parse_a1(name: &str) -> Option<CellRef> {
-        let re = Regex::new(r"^(?<letters>[A-Za-z]+)(?<numbers>[0-9]+)$").unwrap();
-        let caps = re.captures(name)?;
+        let caps = a1_ref_re().captures(name)?;
         let letters = &caps["letters"];
         let numbers = &caps["numbers"];
 
@@ -64,6 +64,14 @@ impl CellRef {
         }
         result
     }
+}
+
+fn a1_ref_re() -> &'static Regex {
+    static A1_RE: OnceLock<Regex> = OnceLock::new();
+    A1_RE.get_or_init(|| {
+        Regex::new(r"^(?<letters>[A-Za-z]+)(?<numbers>[0-9]+)$")
+            .expect("A1 cell reference regex must compile")
+    })
 }
 
 impl std::str::FromStr for CellRef {

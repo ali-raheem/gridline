@@ -10,6 +10,7 @@
 //! - Ignores references inside string literals
 
 use regex::Regex;
+use std::sync::OnceLock;
 
 use super::cell_ref::CellRef;
 
@@ -55,7 +56,7 @@ pub fn extract_dependencies(script: &str) -> Vec<CellRef> {
     }
 
     // Match individual cell references like A1, B2, etc.
-    let cell_re = Regex::new(r"\b([A-Za-z]+)([0-9]+)\b").unwrap();
+    let cell_re = cell_ref_re();
 
     for caps in cell_re.captures_iter(&script_without_ranges) {
         let cell_ref = format!("{}{}", &caps[1], &caps[2]);
@@ -65,6 +66,14 @@ pub fn extract_dependencies(script: &str) -> Vec<CellRef> {
     }
 
     deps
+}
+
+fn cell_ref_re() -> &'static Regex {
+    static CELL_RE: OnceLock<Regex> = OnceLock::new();
+    CELL_RE.get_or_init(|| {
+        Regex::new(r"\b([A-Za-z]+)([0-9]+)\b")
+            .expect("dependency cell reference regex must compile")
+    })
 }
 
 fn strip_string_literals(script: &str) -> String {

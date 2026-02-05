@@ -8,6 +8,7 @@
 //! - **Reference shifting**: Adjusting references when rows/columns are inserted/deleted
 
 use regex::Regex;
+use std::sync::OnceLock;
 
 use super::cell_ref::CellRef;
 
@@ -18,6 +19,32 @@ pub enum ShiftOperation {
     DeleteRow(usize),
     InsertColumn(usize),
     DeleteColumn(usize),
+}
+
+fn cell_ref_re() -> &'static Regex {
+    static CELL_RE: OnceLock<Regex> = OnceLock::new();
+    CELL_RE.get_or_init(|| {
+        Regex::new(r"\b([A-Za-z]+)([0-9]+)\b")
+            .expect("preprocess cell reference regex must compile")
+    })
+}
+
+fn value_ref_re() -> &'static Regex {
+    static VALUE_RE: OnceLock<Regex> = OnceLock::new();
+    VALUE_RE.get_or_init(|| {
+        Regex::new(r"@([A-Za-z]+)([0-9]+)\b")
+            .expect("preprocess value reference regex must compile")
+    })
+}
+
+fn row_context_re() -> &'static Regex {
+    static ROW_RE: OnceLock<Regex> = OnceLock::new();
+    ROW_RE.get_or_init(|| Regex::new(r"\bROW\(\s*\)").expect("ROW() regex must compile"))
+}
+
+fn col_context_re() -> &'static Regex {
+    static COL_RE: OnceLock<Regex> = OnceLock::new();
+    COL_RE.get_or_init(|| Regex::new(r"\bCOL\(\s*\)").expect("COL() regex must compile"))
 }
 
 /// Shift cell references in a formula when rows/cols are inserted/deleted.
@@ -176,8 +203,8 @@ fn offset_single_ref(cell_ref_str: &str, delta_col: isize, delta_row: isize) -> 
 }
 
 fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
-    let cell_re = Regex::new(r"\b([A-Za-z]+)([0-9]+)\b").unwrap();
-    let value_re = Regex::new(r"@([A-Za-z]+)([0-9]+)\b").unwrap();
+    let cell_re = cell_ref_re();
+    let value_re = value_ref_re();
 
     let shift_cells = |seg: &str| {
         // First handle @-prefixed refs using placeholders to avoid double-shifting.
@@ -265,8 +292,8 @@ fn shift_cell_refs_outside_strings(script: &str, op: ShiftOperation) -> String {
 }
 
 fn offset_cell_refs_outside_strings(script: &str, delta_col: isize, delta_row: isize) -> String {
-    let cell_re = Regex::new(r"\b([A-Za-z]+)([0-9]+)\b").unwrap();
-    let value_re = Regex::new(r"@([A-Za-z]+)([0-9]+)\b").unwrap();
+    let cell_re = cell_ref_re();
+    let value_re = value_ref_re();
 
     let offset_cells = |seg: &str| {
         let mut value_refs: Vec<String> = Vec::new();
@@ -364,8 +391,8 @@ pub fn preprocess_script(script: &str) -> String {
 pub fn preprocess_script_with_context(script: &str, context: Option<&CellRef>) -> String {
     // First, replace ROW() and COL() if context is provided
     let script = if let Some(cell_ref) = context {
-        let row_re = Regex::new(r"\bROW\(\s*\)").unwrap();
-        let col_re = Regex::new(r"\bCOL\(\s*\)").unwrap();
+        let row_re = row_context_re();
+        let col_re = col_context_re();
         let row_literal = (cell_ref.row as u128 + 1).to_string();
         let col_literal = (cell_ref.col as u128 + 1).to_string();
         let script = row_re.replace_all(script, row_literal).to_string();
@@ -405,8 +432,8 @@ fn preprocess_script_inner(script: &str) -> String {
 }
 
 fn replace_cell_refs_outside_strings(script: &str) -> String {
-    let cell_re = Regex::new(r"\b([A-Za-z]+)([0-9]+)\b").unwrap();
-    let value_re = Regex::new(r"@([A-Za-z]+)([0-9]+)\b").unwrap();
+    let cell_re = cell_ref_re();
+    let value_re = value_ref_re();
 
     let replace_cells = |seg: &str| {
         let seg = value_re
