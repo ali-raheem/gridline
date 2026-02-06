@@ -99,6 +99,7 @@ pub fn get_commands_help() -> Vec<String> {
         "  :q!            Force quit (discard changes)",
         "  :wq            Save and quit",
         "  :e <file>      Open file (.grd format)",
+        "  :new           New empty document",
         "",
         "Navigation",
         "  :goto <cell>   Go to cell (e.g. :goto A100)",

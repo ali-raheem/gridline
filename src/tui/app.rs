@@ -312,6 +312,20 @@ impl App {
         self.status_message = format!("Deleted row {}", at_row + 1);
     }
 
+    /// Create a new empty document
+    pub fn new_document(&mut self) {
+        let functions = self.core.functions_files.clone();
+        self.core = Document::new();
+        self.core.functions_files = functions;
+        self.cursor_col = 0;
+        self.cursor_row = 0;
+        self.viewport_col = 0;
+        self.viewport_row = 0;
+        self.clipboard = None;
+        self.column_widths.clear();
+        self.status_message = "New document".to_string();
+    }
+
     /// Yank the entire current row
     pub fn yank_row(&mut self) {
         let row = self.cursor_row;
@@ -658,6 +672,17 @@ impl App {
                 if !self.core.modified {
                     return true;
                 }
+            }
+            "new" => {
+                if self.core.modified {
+                    self.status_message =
+                        "Unsaved changes! Use :new! to discard or :w first".to_string();
+                } else {
+                    self.new_document();
+                }
+            }
+            "new!" => {
+                self.new_document();
             }
             "e" | "open" | "load" => {
                 if let Some(path) = args {
