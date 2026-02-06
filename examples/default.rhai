@@ -1,4 +1,6 @@
 // Example custom functions for Gridline
+// Ali Raheem 2026 v0.3.3 2026-02-06
+// MIT or Apache Licensed
 // Load with: gridline -f examples/default.rhai
 // Or at runtime: :source examples/default.rhai
 //
