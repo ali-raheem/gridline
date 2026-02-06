@@ -420,6 +420,8 @@ impl App {
             }
             let height = r2 - r1 + 1;
             let width = c2 - c1 + 1;
+            // Copy to system clipboard as TSV (before moving cells)
+            self.copy_to_system_clipboard(&cells, width, height);
             self.clipboard = Some(Clipboard {
                 cells,
                 source_col: c1,
@@ -445,6 +447,8 @@ impl App {
                     cells.push((0, 0, cell));
                 }
             }
+            // Copy to system clipboard (before moving cells)
+            self.copy_to_system_clipboard(&cells, 1, 1);
             self.clipboard = Some(Clipboard {
                 cells,
                 source_col: cell_ref.col,
@@ -453,6 +457,29 @@ impl App {
                 height: 1,
             });
             self.status_message = "Yanked cell".to_string();
+        }
+    }
+
+    /// Copy cells to system clipboard as TSV
+    fn copy_to_system_clipboard(&self, cells: &[(usize, usize, Cell)], width: usize, height: usize) {
+        // Build a 2D grid of display values
+        let mut grid: Vec<Vec<String>> = vec![vec![String::new(); width]; height];
+        for (col, row, cell) in cells {
+            if *row < height && *col < width {
+                grid[*row][*col] = cell.to_input_string();
+            }
+        }
+
+        // Convert to TSV
+        let tsv: String = grid
+            .into_iter()
+            .map(|row| row.join("\t"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Try to copy to system clipboard (ignore errors - some terminals don't support it)
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(tsv);
         }
     }
 

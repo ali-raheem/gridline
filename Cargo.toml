@@ -39,6 +39,7 @@ tui = [
   "dep:textplots",
   "dep:toml",
   "dep:serde",
+  "dep:arboard",
 ]
 
 # Desktop GUI
