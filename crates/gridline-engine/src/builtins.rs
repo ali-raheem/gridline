@@ -846,6 +846,36 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
+    // IF(cond, then_val, else_val): conditional expression
+    engine.register_fn(
+        "IF",
+        |cond: bool, then_val: Dynamic, else_val: Dynamic| -> Dynamic {
+            if cond { then_val } else { else_val }
+        },
+    );
+
+    // ROUND(n, decimals): round to N decimal places
+    engine.register_fn(
+        "ROUND",
+        |n: f64, decimals: i64| -> Result<f64, Box<EvalAltResult>> {
+            let decimals = to_decimal_places(decimals)?;
+            let factor = 10_f64.powi(decimals as i32);
+            Ok((n * factor).round() / factor)
+        },
+    );
+    engine.register_fn(
+        "ROUND",
+        |n: i64, decimals: i64| -> Result<f64, Box<EvalAltResult>> {
+            let decimals = to_decimal_places(decimals)?;
+            let factor = 10_f64.powi(decimals as i32);
+            Ok((n as f64 * factor).round() / factor)
+        },
+    );
+
+    // ABS(n): absolute value
+    engine.register_fn("ABS", |n: f64| -> f64 { n.abs() });
+    engine.register_fn("ABS", |n: i64| -> i64 { n.abs() });
+
     // SUMIF(c1, r1, c2, r2, predicate): sum values where predicate returns true
     let grid_sumif = grid.clone();
     let cache_sumif = value_cache.clone();
