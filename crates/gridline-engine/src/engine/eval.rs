@@ -152,4 +152,3 @@ pub fn create_script_engine_with_functions(
 
     (engine, ast, error)
 }
-

@@ -14,13 +14,17 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Down | KeyCode::Char('j') => Some(Action::Move(0, 1)),
             KeyCode::Left | KeyCode::Char('h') => Some(Action::Move(-1, 0)),
             KeyCode::Right | KeyCode::Char('l') => Some(Action::Move(1, 0)),
-            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => Some(Action::Move(-1, 0)),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::Move(-1, 0))
+            }
             KeyCode::Tab => Some(Action::Move(1, 0)),
             KeyCode::BackTab => Some(Action::Move(-1, 0)),
 
             KeyCode::PageUp => Some(Action::Page(-1)),
             KeyCode::PageDown => Some(Action::Page(1)),
-            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::GotoFirst),
+            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Action::GotoFirst)
+            }
             KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::GotoLast),
             KeyCode::Home => Some(Action::HomeCol),
             KeyCode::End => Some(Action::EndCol),
@@ -96,7 +100,9 @@ pub(crate) fn translate_emacs(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('v') if alt => Some(Action::Page(-1)),
 
             // Tab navigation
-            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => Some(Action::Move(-1, 0)),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::Move(-1, 0))
+            }
             KeyCode::Tab => Some(Action::Move(1, 0)),
             KeyCode::BackTab => Some(Action::Move(-1, 0)),
 

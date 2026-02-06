@@ -64,23 +64,23 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
             }
 
             // Handle Vim number prefix (e.g., 5j) in Normal and Visual modes
-            if matches!(app.keymap, Keymap::Vim)
-                && matches!(app.mode, Mode::Normal | Mode::Visual)
+            if matches!(app.keymap, Keymap::Vim) && matches!(app.mode, Mode::Normal | Mode::Visual)
             {
                 if let KeyCode::Char(c @ '1'..='9') = key.code {
                     if key.modifiers.is_empty() {
                         let digit = c.to_digit(10).unwrap() as usize;
                         app.pending_count = Some(
-                            app.pending_count.unwrap_or(0).saturating_mul(10).saturating_add(digit)
+                            app.pending_count
+                                .unwrap_or(0)
+                                .saturating_mul(10)
+                                .saturating_add(digit),
                         );
                         continue;
                     }
                 } else if let KeyCode::Char('0') = key.code {
                     // '0' only counts as part of number if we already have a count
                     if key.modifiers.is_empty() && app.pending_count.is_some() {
-                        app.pending_count = Some(
-                            app.pending_count.unwrap_or(0).saturating_mul(10)
-                        );
+                        app.pending_count = Some(app.pending_count.unwrap_or(0).saturating_mul(10));
                         continue;
                     }
                 }

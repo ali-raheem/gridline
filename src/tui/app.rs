@@ -93,6 +93,10 @@ pub struct App {
     pub selection_anchor: Option<(usize, usize)>,
     /// Clipboard for yank/paste
     pub clipboard: Option<Clipboard>,
+    /// Persistent system clipboard handle.
+    ///
+    /// Keeping this alive avoids dropping clipboard ownership immediately on Linux/X11.
+    pub system_clipboard: Option<arboard::Clipboard>,
     /// Per-column widths (column index -> width). Default is col_width.
     pub column_widths: HashMap<usize, usize>,
     /// Plot modal state (when open)
@@ -148,6 +152,7 @@ impl App {
             col_width: 12,
             selection_anchor: None,
             clipboard: None,
+            system_clipboard: arboard::Clipboard::new().ok(),
             column_widths: HashMap::new(),
             plot_modal: None,
             help_modal: false,
@@ -564,7 +569,12 @@ impl App {
     }
 
     /// Copy cells to system clipboard as TSV
-    fn copy_to_system_clipboard(&self, cells: &[(usize, usize, Cell)], width: usize, height: usize) {
+    fn copy_to_system_clipboard(
+        &mut self,
+        cells: &[(usize, usize, Cell)],
+        width: usize,
+        height: usize,
+    ) {
         // Build a 2D grid of display values
         let mut grid: Vec<Vec<String>> = vec![vec![String::new(); width]; height];
         for (col, row, cell) in cells {
@@ -580,9 +590,16 @@ impl App {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // Try to copy to system clipboard (ignore errors - some terminals don't support it)
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            let _ = clipboard.set_text(tsv);
+        if self.system_clipboard.is_none() {
+            self.system_clipboard = arboard::Clipboard::new().ok();
+        }
+
+        // Best-effort sync to the OS clipboard; internal yank buffer remains authoritative for `p`.
+        if let Some(clipboard) = self.system_clipboard.as_mut() {
+            if clipboard.set_text(tsv).is_err() {
+                // Drop handle so we can retry initialization on the next yank.
+                self.system_clipboard = None;
+            }
         }
     }
 
@@ -610,7 +627,10 @@ impl App {
         for i in 0..count {
             // Offset each paste by clipboard dimensions (paste downward)
             let paste_row = base_row + (i * clip_height);
-            match self.core.paste_cells(base_col, paste_row, source_col, source_row, &cells) {
+            match self
+                .core
+                .paste_cells(base_col, paste_row, source_col, source_row, &cells)
+            {
                 Ok(pasted) => total_pasted += pasted,
                 Err(e) => {
                     self.status_message = format!("Paste failed: {}", e);
