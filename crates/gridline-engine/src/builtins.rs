@@ -856,6 +856,29 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
     });
 
+    // DATEDIFF(a, b): signed difference in seconds between two date/datetime strings
+    engine.register_fn(
+        "DATEDIFF",
+        |a: &str, b: &str| -> Result<i64, Box<EvalAltResult>> {
+            let parse = |s: &str| -> Result<chrono::NaiveDateTime, Box<EvalAltResult>> {
+                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                    .or_else(|_| {
+                        chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                            .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+                    })
+                    .map_err(|e| {
+                        Box::new(EvalAltResult::ErrorRuntime(
+                            format!("DATEDIFF: invalid date '{}': {}", s, e).into(),
+                            rhai::Position::NONE,
+                        ))
+                    })
+            };
+            let da = parse(a)?;
+            let db = parse(b)?;
+            Ok((da - db).num_seconds())
+        },
+    );
+
     // IF(cond, then_val, else_val): conditional expression
     engine.register_fn(
         "IF",
