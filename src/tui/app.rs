@@ -8,6 +8,7 @@
 use gridline_core::{Document, Result, ScriptContext};
 use gridline_engine::engine::{Cell, CellRef};
 use gridline_engine::plot::{PlotSpec, parse_plot_spec};
+use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -129,6 +130,13 @@ pub struct App {
     pub pending_c: bool,
     /// Pending 'z' key for Vim zf/zF commands
     pub pending_z: bool,
+
+    /// Search: compiled regex pattern
+    pub search_pattern: Option<Regex>,
+    /// Search: ordered list of matching cell refs
+    pub search_matches: Vec<CellRef>,
+    /// Search: current match index
+    pub search_index: usize,
 }
 
 impl App {
@@ -167,6 +175,9 @@ impl App {
             pending_y: false,
             pending_c: false,
             pending_z: false,
+            search_pattern: None,
+            search_matches: Vec::new(),
+            search_index: 0,
         }
     }
 
@@ -308,6 +319,109 @@ impl App {
         self.mode = Mode::Normal;
         self.edit_buffer.clear();
         self.edit_cursor = 0;
+    }
+
+    /// Execute a search: compile pattern, find all matching cells, jump to first.
+    pub fn execute_search(&mut self, pattern: &str) {
+        if pattern.is_empty() {
+            self.status_message = "Empty search pattern".to_string();
+            return;
+        }
+
+        // Case-insensitive by default; user can override with (?-i) if wanted.
+        let regex_pattern = if pattern.starts_with("(?") {
+            pattern.to_string()
+        } else {
+            format!("(?i){}", pattern)
+        };
+
+        match Regex::new(&regex_pattern) {
+            Ok(re) => {
+                // Collect all occupied cell refs first, then check display values.
+                let cell_refs: Vec<CellRef> =
+                    self.core.grid.iter().map(|e| e.key().clone()).collect();
+                let mut matches: Vec<CellRef> = Vec::new();
+                for cell_ref in cell_refs {
+                    let display = self.core.get_cell_display(&cell_ref);
+                    if re.is_match(&display) {
+                        matches.push(cell_ref);
+                    }
+                }
+                // Sort by row, then column for stable traversal.
+                matches.sort_by(|a, b| a.row.cmp(&b.row).then(a.col.cmp(&b.col)));
+
+                if matches.is_empty() {
+                    self.status_message = format!("No matches for /{}/", pattern);
+                    self.search_pattern = Some(re);
+                    self.search_matches.clear();
+                    self.search_index = 0;
+                } else {
+                    // Find the first match at or after cursor position.
+                    let cursor = CellRef::new(self.cursor_col, self.cursor_row);
+                    let start_idx = matches
+                        .iter()
+                        .position(|m| {
+                            m.row > cursor.row
+                                || (m.row == cursor.row && m.col >= cursor.col)
+                        })
+                        .unwrap_or(0);
+
+                    let count = matches.len();
+                    self.search_pattern = Some(re);
+                    self.search_matches = matches;
+                    self.search_index = start_idx;
+                    self.jump_to_search_match();
+                    self.status_message =
+                        format!("/{}/  [{}/{}]", pattern, start_idx + 1, count);
+                }
+            }
+            Err(e) => {
+                self.status_message = format!("Error: invalid regex: {}", e);
+            }
+        }
+    }
+
+    /// Jump to next search match.
+    pub fn search_next(&mut self) {
+        if self.search_matches.is_empty() {
+            self.status_message = "No search results".to_string();
+            return;
+        }
+        self.search_index = (self.search_index + 1) % self.search_matches.len();
+        self.jump_to_search_match();
+        self.status_message = format!(
+            "[{}/{}]",
+            self.search_index + 1,
+            self.search_matches.len()
+        );
+    }
+
+    /// Jump to previous search match.
+    pub fn search_prev(&mut self) {
+        if self.search_matches.is_empty() {
+            self.status_message = "No search results".to_string();
+            return;
+        }
+        if self.search_index == 0 {
+            self.search_index = self.search_matches.len() - 1;
+        } else {
+            self.search_index -= 1;
+        }
+        self.jump_to_search_match();
+        self.status_message = format!(
+            "[{}/{}]",
+            self.search_index + 1,
+            self.search_matches.len()
+        );
+    }
+
+    /// Move cursor to the current search match.
+    fn jump_to_search_match(&mut self) {
+        if let Some(cell) = self.search_matches.get(self.search_index) {
+            self.cursor_col = cell.col;
+            self.cursor_row = cell.row;
+            self.update_viewport();
+        }
     }
 
     /// Clear the current cell
@@ -742,6 +856,13 @@ impl App {
         let command = parts[0];
         let args = parts.get(1).map(|s| s.trim());
 
+        // Handle /pattern search syntax
+        if cmd.starts_with('/') {
+            let pattern = &cmd[1..];
+            self.execute_search(pattern);
+            return false;
+        }
+
         match command {
             "q" => {
                 if self.core.modified {
@@ -900,6 +1021,13 @@ impl App {
             }
             "help" | "h" => {
                 self.open_help_modal();
+            }
+            "find" | "search" => {
+                if let Some(pattern) = args {
+                    self.execute_search(pattern);
+                } else {
+                    self.status_message = "Usage: :find <pattern>".to_string();
+                }
             }
             "call" => {
                 // :call func_name(args) - Execute a function from custom Rhai script

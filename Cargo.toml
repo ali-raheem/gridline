@@ -61,6 +61,7 @@ directories = "6"
 
 # Shared (non-UI) deps for the CLI
 thiserror = "2.0"
+regex = "1"
 
 # Optional TUI deps
 ratatui = { version = "0.29", optional = true }

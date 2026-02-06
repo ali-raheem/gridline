@@ -93,6 +93,18 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
         Action::EnterEdit => app.enter_edit_mode(),
         Action::InsertAtStart => app.enter_edit_mode_at(true),
         Action::CommitEdit => app.commit_edit(),
+        Action::CommitEditDown => {
+            app.commit_edit();
+            app.move_cursor(0, 1);
+        }
+        Action::CommitEditRight => {
+            app.commit_edit();
+            app.move_cursor(1, 0);
+        }
+        Action::CommitEditLeft => {
+            app.commit_edit();
+            app.move_cursor(-1, 0);
+        }
         Action::EnterCommand => {
             app.mode = Mode::Command;
             app.command_buffer.clear();
@@ -149,6 +161,13 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
         Action::IncColWidth => app.increase_column_width(),
         Action::DecColWidth => app.decrease_column_width(),
         Action::Save => app.save_file(),
+        Action::SearchPrompt => {
+            app.mode = Mode::Command;
+            app.command_buffer = "/".to_string();
+            app.command_cursor = app.command_buffer.len();
+        }
+        Action::SearchNext => app.search_next(),
+        Action::SearchPrev => app.search_prev(),
     }
     ApplyResult::Continue
 }

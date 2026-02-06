@@ -44,6 +44,9 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('+') | KeyCode::Char('>') => Some(Action::IncColWidth),
             KeyCode::Char('-') | KeyCode::Char('<') => Some(Action::DecColWidth),
             KeyCode::Char('G') => Some(Action::GotoLast),
+            KeyCode::Char('/') => Some(Action::SearchPrompt),
+            KeyCode::Char('n') => Some(Action::SearchNext),
+            KeyCode::Char('N') => Some(Action::SearchPrev),
             // 'g' is handled specially in input.rs for gg sequence
             _ => None,
         },
@@ -63,8 +66,13 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
         },
 
         Mode::Edit => match key.code {
-            KeyCode::Esc => Some(Action::Cancel),
-            KeyCode::Enter => Some(Action::CommitEdit),
+            KeyCode::Esc => Some(Action::CommitEdit),
+            KeyCode::Enter => Some(Action::CommitEditDown),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::CommitEditLeft)
+            }
+            KeyCode::Tab => Some(Action::CommitEditRight),
+            KeyCode::BackTab => Some(Action::CommitEditLeft),
             _ => None,
         },
 
@@ -144,6 +152,11 @@ pub(crate) fn translate_emacs(mode: Mode, key: KeyEvent) -> Option<Action> {
             // Goto prompt
             KeyCode::Char('g') if alt => Some(Action::OpenGotoPrompt),
 
+            // Search
+            KeyCode::Char('s') if alt => Some(Action::SearchPrompt),
+            KeyCode::Char('/') => Some(Action::SearchPrompt),
+            KeyCode::Char('r') if alt => Some(Action::SearchNext),
+
             _ => None,
         },
 
@@ -172,9 +185,14 @@ pub(crate) fn translate_emacs(mode: Mode, key: KeyEvent) -> Option<Action> {
         },
 
         Mode::Edit => match key.code {
-            KeyCode::Char('g') if ctrl => Some(Action::Cancel),
-            KeyCode::Esc => Some(Action::Cancel),
-            KeyCode::Enter => Some(Action::CommitEdit),
+            KeyCode::Char('g') if ctrl => Some(Action::CommitEdit),
+            KeyCode::Esc => Some(Action::CommitEdit),
+            KeyCode::Enter => Some(Action::CommitEditDown),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::CommitEditLeft)
+            }
+            KeyCode::Tab => Some(Action::CommitEditRight),
+            KeyCode::BackTab => Some(Action::CommitEditLeft),
             _ => None,
         },
 

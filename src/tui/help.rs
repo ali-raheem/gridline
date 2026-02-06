@@ -251,6 +251,9 @@ fn action_label(action: &Action) -> &'static str {
         Action::EnterEdit => "Edit cell",
         Action::InsertAtStart => "Edit cell (cursor at start)",
         Action::CommitEdit => "Commit edit",
+        Action::CommitEditDown => "Commit edit, move down",
+        Action::CommitEditRight => "Commit edit, move right",
+        Action::CommitEditLeft => "Commit edit, move left",
         Action::EnterCommand => "Command mode",
         Action::ExecuteCommand => "Execute command",
         Action::EnterVisual => "Visual mode",
@@ -281,5 +284,8 @@ fn action_label(action: &Action) -> &'static str {
         Action::IncColWidth => "Widen column",
         Action::DecColWidth => "Narrow column",
         Action::Save => "Save file",
+        Action::SearchPrompt => "Search",
+        Action::SearchNext => "Next match",
+        Action::SearchPrev => "Previous match",
     }
 }

@@ -1140,6 +1140,7 @@ dependencies = [
  "gridline-core",
  "gridline-engine",
  "ratatui",
+ "regex",
  "serde",
  "textplots",
  "thiserror 2.0.18",

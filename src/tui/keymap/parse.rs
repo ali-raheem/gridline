@@ -349,6 +349,9 @@ fn action_from_str(input: &str) -> Option<Action> {
         "cancel" => Some(Action::Cancel),
         "enter_edit" => Some(Action::EnterEdit),
         "commit_edit" => Some(Action::CommitEdit),
+        "commit_edit_down" => Some(Action::CommitEditDown),
+        "commit_edit_right" => Some(Action::CommitEditRight),
+        "commit_edit_left" => Some(Action::CommitEditLeft),
         "enter_command" => Some(Action::EnterCommand),
         "execute_command" => Some(Action::ExecuteCommand),
         "enter_visual" => Some(Action::EnterVisual),
@@ -374,6 +377,9 @@ fn action_from_str(input: &str) -> Option<Action> {
         "inc_col_width" => Some(Action::IncColWidth),
         "dec_col_width" => Some(Action::DecColWidth),
         "save" => Some(Action::Save),
+        "search" | "search_prompt" => Some(Action::SearchPrompt),
+        "search_next" => Some(Action::SearchNext),
+        "search_prev" => Some(Action::SearchPrev),
         _ => None,
     }
 }

@@ -157,6 +157,12 @@ pub enum Action {
     InsertAtStart,
     /// Commit the current edit and return to Normal mode.
     CommitEdit,
+    /// Commit the current edit and move down.
+    CommitEditDown,
+    /// Commit the current edit and move right.
+    CommitEditRight,
+    /// Commit the current edit and move left.
+    CommitEditLeft,
     /// Enter Command mode (`:` prompt).
     EnterCommand,
     /// Execute the command in the command buffer.
@@ -207,4 +213,10 @@ pub enum Action {
     DecColWidth,
     /// Save the file.
     Save,
+    /// Open the search prompt.
+    SearchPrompt,
+    /// Jump to next search match.
+    SearchNext,
+    /// Jump to previous search match.
+    SearchPrev,
 }
