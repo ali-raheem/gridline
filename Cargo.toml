@@ -7,7 +7,7 @@ members = [
 
 [package]
 name = "gridline"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 authors = ["Ali Raheem"]
 repository = "https://github.com/ali-raheem/gridline"
@@ -49,8 +49,8 @@ gui = ["dep:eframe", "dep:arboard"]
 webui = []
 
 [dependencies]
-gridline-core = { path = "crates/gridline-core", version = "0.2.1" }
-gridline-engine = { path = "crates/gridline-engine", version = "0.2.1" }
+gridline-core = { path = "crates/gridline-core", version = "0.3.0" }
+gridline-engine = { path = "crates/gridline-engine", version = "0.3.0" }
 
 # Ergonomic error handling in binaries.
 anyhow = "1"
