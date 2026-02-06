@@ -111,6 +111,9 @@ pub struct App {
 
     /// Pending 'g' key for Vim gg command
     pub pending_g: bool,
+
+    /// Pending count for Vim-style number prefixes (e.g., 5j)
+    pub pending_count: Option<usize>,
 }
 
 impl App {
@@ -143,6 +146,7 @@ impl App {
             keymap: Keymap::Vim,
             status_message: String::new(),
             pending_g: false,
+            pending_count: None,
         }
     }
 

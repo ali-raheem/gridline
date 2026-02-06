@@ -15,6 +15,7 @@ fn vim_help_text() -> Vec<String> {
     vec![
         "Navigation",
         "  h/j/k/l        Move left/down/up/right",
+        "  [n]h/j/k/l     Move n cells (e.g., 5j)",
         "  Arrow keys     Move cursor",
         "  Tab/Shift+Tab  Move right/left",
         "  PageUp/Down    Scroll by page",
