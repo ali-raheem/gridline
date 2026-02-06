@@ -1,0 +1,20 @@
+# Gridline Spreadsheet
+# Script operations showcase (:rhai / :call), not formula cells.
+#
+# Recommended flow:
+#   :source examples/script_ops.rhai
+#   :call seed_sales_table()
+#   :call add_row("Markers", 12, 2.25)
+#   :call recalc_totals()
+#   :call clear_demo()
+#
+# One-off examples:
+#   :rhai SET_CELL("B3", 42)
+#   :rhai SET_RANGE(0, 5, 4, 5, 7)
+#   :rhai CLEAR_RANGE(0, 5, 4, 5)
+
+A1: "Use :rhai / :call with script-only builtins"
+A2: "SET_CELL, CLEAR_CELL, SET_RANGE, CLEAR_RANGE"
+A3: "Then run :call seed_sales_table()"
+A4: "Try :call add_row(\"Notebook\", 5, 3.50)"
+A5: "Try :call recalc_totals()"

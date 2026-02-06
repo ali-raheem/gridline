@@ -99,19 +99,28 @@ cargo run -- examples/plot.grid -o plot.md
 Load custom Rhai functions at startup (can specify multiple files):
 
 ```bash
-cargo run -- -f examples/functions.rhai examples/plot.grid
+cargo run -- -f examples/default.rhai examples/plot.grid
 cargo run -- -f lib1.rhai -f lib2.rhai examples/plot.grid
 ```
 
-Auto-load a default functions file if present:
-- Gridline will auto-load `default.rhai` from your OS config directory (resolved via `directories::ProjectDirs`) if it exists.
-  - Linux: typically `~/.config/gridline/default.rhai`
-  - Disable with `--no-default-functions`
+Recommended default setup:
+- Gridline looks for `default.rhai` in your OS config directory on startup.
+- Linux: typically `~/.config/gridline/default.rhai`
+- If missing, Gridline prints the path it tried to stderr.
+- Gridline still works without it, but this file is the intended baseline defaults.
+- Disable auto-lookup with `--no-default-functions`.
+
+Install the repo's default file (Linux):
+
+```bash
+mkdir -p ~/.config/gridline
+cp examples/default.rhai ~/.config/gridline/default.rhai
+```
 
 Load or reload functions at runtime:
 
 ```text
-:source examples/functions.rhai
+:source examples/default.rhai
 :so                                 # reload all loaded files
 ```
 

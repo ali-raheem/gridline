@@ -1,0 +1,48 @@
+# Gridline Spreadsheet
+# default.rhai function showcase.
+# Load with:
+#   cargo run -- -f examples/default.rhai examples/default_functions.grid
+
+A1: =(1..=10).SPILL()
+
+B1: "Stats and formatting"
+B2: =stdev(VEC(A1:A10))
+B3: =stdevp(VEC(A1:A10))
+B4: =variance(VEC(A1:A10))
+B5: =variancep(VEC(A1:A10))
+B6: =median(VEC(A1:A10))
+B7: =geomean(VEC(A1:A5))
+B8: =product(VEC(A1:A5))
+B9: =percent(45, 60)
+B10: =percent_change(100, 115)
+B11: =format_percent(0.1234, 2)
+B12: =format_currency(12345.678, 2)
+B13: =add_commas("1234567.89")
+
+C1: "Finance"
+C2: =pmt(0.0423 / 12, 30 * 12, 435999)
+C3: =format_currency(C2, 2)
+C4: =fv(0.05 / 12, 120, 200)
+C5: =npv(0.1, [-1000, 300, 400, 500, 600])
+C6: =cagr(1000, 2500, 5)
+
+D1: "Array helpers"
+D2: =running_sum(VEC(A1:A10)).SPILL()
+E1: =running_avg(VEC(A1:A10)).SPILL()
+
+F1: "Text and lookup helpers"
+F2: =concat_arr(["Grid", "line"], "-")
+F3: =left("spreadsheet", 6)
+F4: =right("spreadsheet", 5)
+F5: =pad_left("42", 5, "0")
+F6: =repeat_str("*", 5)
+F7: =index_of([10, 20, 30], 20)
+F8: =contains([10, 20, 30], 25)
+F9: =count_val([1, 1, 2, 3, 1], 1)
+F10: =unique([1, 2, 2, 3, 3, 3]).SPILL()
+
+G1: "Math and logic helpers"
+G2: =affine(A5, 1, 10, 0, 100)
+G3: =clamp(-3, 0, 10)
+G4: =iff(true, "yes", "no")
+G5: =none([false, false, true])

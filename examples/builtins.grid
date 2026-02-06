@@ -1,0 +1,62 @@
+# Gridline Spreadsheet
+# Built-in function showcase.
+# This file is designed to run without custom .rhai functions.
+
+A1: 1
+A2: 2
+A3: 3
+A4: 4
+A5: 5
+B1: "apple"
+B2: "banana"
+B3: "carrot"
+C1: 10
+C2: 20
+C3: 30
+
+D1: "Range builtins"
+D2: =SUM(A1:A5)
+D3: =AVG(A1:A5)
+D4: =COUNT(B1:B5)
+D5: =MIN(A1:A5)
+D6: =MAX(A1:A5)
+D7: =PRODUCT(A1:A5)
+D8: =MEDIAN(A1:A5)
+D9: =GEOMEAN(A1:A5)
+D10: =SUMIF(A1:A5, |x| x >= 3)
+D11: =COUNTIF(A1:A5, |x| x % 2 == 0)
+D12: =CONCAT(B1:B3, ", ")
+
+E1: "Lookup and refs"
+E2: =LOOKUP("banana", B1:B3, C1:C3)
+E3: =A1 + A5
+E4: =len(@B2)
+E5: =ROW()
+E6: =COL()
+E7: =IF(E2 > 15, "large", "small")
+
+F1: "Scalar builtins"
+F2: =POW(2, 8)
+F3: =SQRT(81)
+F4: =ROUND(PI(), 4)
+F5: =LN(E())
+F6: =LOG(1000)
+F7: =ABS(-17)
+F8: =FLOOR(2.9)
+F9: =CEIL(2.1)
+F10: =FIXED(12.3456, 2)
+F11: =MONEY(12.3456, "$", 2)
+F12: =DATEDIFF("2026-01-02", "2026-01-01")
+F13: =FORMAT_CELL(2, 4)
+F14: =PARSE_CELL("C5")[0]
+F15: =PARSE_CELL("C5")[1]
+F16: =FORMAT_RANGE(0, 0, 2, 2)
+F17: =PARSE_RANGE("A1:C3")[2]
+F18: =PARSE_RANGE("A1:C3")[3]
+F19: =ISNUMBER(A1)
+F20: =ISTEXT(@B1)
+F21: =ISEMPTY(@B5)
+
+G1: "Array and chart"
+G2: =VEC(A1:A5).map(|x| x * 10).SPILL()
+H2: =BARCHART(G2:G6, "A x 10")
