@@ -8,7 +8,6 @@ pub(crate) fn default_functions_path() -> Option<PathBuf> {
     Some(path)
 }
 
-#[allow(dead_code)]
 pub(crate) fn prepend_default_functions_if_present(
     functions: &mut Vec<PathBuf>,
     no_default_functions: bool,

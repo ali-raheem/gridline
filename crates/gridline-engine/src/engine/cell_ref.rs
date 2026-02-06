@@ -31,7 +31,9 @@ impl CellRef {
 
     /// Parse a cell reference from spreadsheet notation (e.g., "A1", "B2", "AA10").
     /// Returns None if the input is invalid.
-    #[allow(clippy::should_implement_trait)]
+    ///
+    /// Note: This returns Option instead of Result to allow easy use with `?` and `ok_or`.
+    /// The `FromStr` trait impl below provides Result-based parsing.
     pub fn from_str(name: &str) -> Option<CellRef> {
         Self::parse_a1(name)
     }

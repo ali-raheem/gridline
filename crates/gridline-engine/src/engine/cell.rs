@@ -4,7 +4,7 @@
 //! - [`CellType`] - The type of content in a cell (empty, text, number, or formula)
 //! - [`Cell`] - A cell with content, dependencies, and cached evaluation state
 //! - [`Grid`] - Thread-safe sparse storage for cells (backed by `DashMap`)
-//! - [`SpillMap`] - Thread-safe storage for array formula spill values
+//! - [`ValueCache`] - Thread-safe cache for computed values and array spills
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -123,9 +123,3 @@ pub type Grid = std::sync::Arc<DashMap<CellRef, Cell>>;
 /// - Cell references to use pre-computed values instead of re-evaluating
 /// - Array formulas to store spill values for chaining
 pub type ValueCache = Arc<DashMap<CellRef, rhai::Dynamic>>;
-
-// Legacy type aliases for backward compatibility during refactoring
-#[doc(hidden)]
-pub type SpillMap = ValueCache;
-#[doc(hidden)]
-pub type ComputedMap = ValueCache;

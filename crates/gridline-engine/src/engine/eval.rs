@@ -153,23 +153,3 @@ pub fn create_script_engine_with_functions(
     (engine, ast, error)
 }
 
-// Backward compatibility aliases (deprecated)
-#[doc(hidden)]
-#[allow(dead_code)]
-pub fn create_engine_with_spill(
-    grid: Grid,
-    value_cache: ValueCache,
-    _deprecated: ValueCache,
-) -> Engine {
-    create_engine_with_cache(grid, value_cache)
-}
-
-#[doc(hidden)]
-#[allow(dead_code)]
-pub fn create_engine_with_functions_and_spill(
-    grid: Grid,
-    value_cache: ValueCache,
-    custom_script: Option<&str>,
-) -> (Engine, Option<AST>, Option<String>) {
-    create_engine_with_functions_and_cache(grid, value_cache, custom_script)
-}

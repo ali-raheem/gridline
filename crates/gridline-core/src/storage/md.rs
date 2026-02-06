@@ -146,47 +146,6 @@ fn render_plot_ascii<W: Write>(
     Ok(())
 }
 
-#[cfg(test)]
-#[allow(clippy::items_after_test_module)]
-mod tests {
-    use super::write_markdown;
-    use crate::document::Document;
-    use std::fs;
-    use std::path::PathBuf;
-
-    #[test]
-    fn markdown_export_matches_expected_simple() {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let grid_path = repo_root.join("tests/fixtures/simple.grid");
-        let expected_path = repo_root.join("tests/fixtures/simple.expected.md");
-        let output_path = std::env::temp_dir().join(format!(
-            "gridline_simple_export_{}_{}_{:?}.md",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos(),
-            std::thread::current().id(),
-        ));
-        struct Cleanup(PathBuf);
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                let _ = fs::remove_file(&self.0);
-            }
-        }
-        let _cleanup = Cleanup(output_path.clone());
-
-        let mut doc = Document::with_file(Some(grid_path.to_path_buf()), Vec::new()).unwrap();
-        write_markdown(&output_path, &mut doc).unwrap();
-
-        let actual = fs::read_to_string(&output_path).unwrap();
-        let expected = fs::read_to_string(expected_path).unwrap();
-
-        let normalize = |text: String| text.replace("\r\n", "\n");
-        assert_eq!(normalize(actual), normalize(expected));
-    }
-}
-
 /// Render a simple ASCII bar chart
 fn render_bar_chart<W: Write>(w: &mut W, data: &PlotData) -> std::io::Result<()> {
     let max_y = data.y_range.1;
@@ -344,4 +303,44 @@ fn render_scatter_chart<W: Write>(w: &mut W, data: &PlotData) -> std::io::Result
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_markdown;
+    use crate::document::Document;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn markdown_export_matches_expected_simple() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let grid_path = repo_root.join("tests/fixtures/simple.grid");
+        let expected_path = repo_root.join("tests/fixtures/simple.expected.md");
+        let output_path = std::env::temp_dir().join(format!(
+            "gridline_simple_export_{}_{}_{:?}.md",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(output_path.clone());
+
+        let mut doc = Document::with_file(Some(grid_path.to_path_buf()), Vec::new()).unwrap();
+        write_markdown(&output_path, &mut doc).unwrap();
+
+        let actual = fs::read_to_string(&output_path).unwrap();
+        let expected = fs::read_to_string(expected_path).unwrap();
+
+        let normalize = |text: String| text.replace("\r\n", "\n");
+        assert_eq!(normalize(actual), normalize(expected));
+    }
 }
