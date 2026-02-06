@@ -369,7 +369,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let status = if !app.status_message.is_empty() {
         app.status_message.clone()
     } else {
-        format!("{}  |  {}", file_info, help)
+        format!("{}  |  [{}]  |  {}", file_info, app.keymap.name(), help)
     };
 
     let style = if app.status_message.starts_with("Error") {
