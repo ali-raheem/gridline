@@ -78,6 +78,21 @@ pub const RANGE_BUILTINS: &[RangeBuiltin] = &[
         rhai_name: "COUNTIF_RANGE",
         description: "Count cells where predicate is true",
     },
+    RangeBuiltin {
+        sheet_name: "MEDIAN",
+        rhai_name: "MEDIAN_RANGE",
+        description: "Median of numeric values in a cell range",
+    },
+    RangeBuiltin {
+        sheet_name: "GEOMEAN",
+        rhai_name: "GEOMEAN_RANGE",
+        description: "Geometric mean of numeric values in a cell range",
+    },
+    RangeBuiltin {
+        sheet_name: "CONCAT",
+        rhai_name: "CONCAT_RANGE",
+        description: "Concatenate cell values in a range",
+    },
 ];
 
 /// Regex that matches built-in range calls like `SUM(A1:B5)`.
@@ -107,6 +122,24 @@ pub fn range_rhai_name(sheet_name: &str) -> Option<&'static str> {
         .iter()
         .find(|b| b.sheet_name == sheet_name)
         .map(|b| b.rhai_name)
+}
+
+/// Regex for `LOOKUP(value_expr, search_start:search_end, return_start:return_end)`.
+///
+/// Captures:
+/// - group 1: value expression (e.g. `"apple"` or `@A1`)
+/// - group 2: search range start (e.g. `A1`)
+/// - group 3: search range end (e.g. `A5`)
+/// - group 4: return range start (e.g. `B1`)
+/// - group 5: return range end (e.g. `B5`)
+pub fn lookup_fn_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"\bLOOKUP\((.+?),\s*([A-Za-z]+[0-9]+):([A-Za-z]+[0-9]+)\s*,\s*([A-Za-z]+[0-9]+):([A-Za-z]+[0-9]+)\s*\)"
+        )
+        .expect("LOOKUP regex must compile")
+    })
 }
 
 fn eval_script_cell(ctx: &NativeCallContext, script: &str) -> Option<f64> {
@@ -909,6 +942,38 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     engine.register_fn("ABS", |n: f64| -> f64 { n.abs() });
     engine.register_fn("ABS", |n: i64| -> i64 { n.abs() });
 
+    // FLOOR(x): round down toward negative infinity
+    engine.register_fn("FLOOR", |x: f64| -> f64 { x.floor() });
+    engine.register_fn("FLOOR", |x: i64| -> f64 { x as f64 });
+
+    // CEIL(x): round up toward positive infinity
+    engine.register_fn("CEIL", |x: f64| -> f64 { x.ceil() });
+    engine.register_fn("CEIL", |x: i64| -> f64 { x as f64 });
+
+    // PI(): ratio of circumference to diameter
+    engine.register_fn("PI", || -> f64 { std::f64::consts::PI });
+
+    // E(): Euler's number
+    engine.register_fn("E", || -> f64 { std::f64::consts::E });
+
+    // LN(x): natural logarithm
+    engine.register_fn("LN", |x: f64| -> f64 { x.ln() });
+    engine.register_fn("LN", |x: i64| -> f64 { (x as f64).ln() });
+
+    // LOG(x): base-10 logarithm; LOG(x, base): arbitrary base
+    engine.register_fn("LOG", |x: f64| -> f64 { x.log10() });
+    engine.register_fn("LOG", |x: i64| -> f64 { (x as f64).log10() });
+    engine.register_fn("LOG", |x: f64, base: f64| -> f64 { x.log(base) });
+    engine.register_fn("LOG", |x: i64, base: i64| -> f64 {
+        (x as f64).log(base as f64)
+    });
+    engine.register_fn("LOG", |x: f64, base: i64| -> f64 {
+        x.log(base as f64)
+    });
+    engine.register_fn("LOG", |x: i64, base: f64| -> f64 {
+        (x as f64).log(base)
+    });
+
     // SUMIF(c1, r1, c2, r2, predicate): sum values where predicate returns true
     let grid_sumif = grid.clone();
     let cache_sumif = value_cache.clone();
@@ -962,6 +1027,237 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
                 }
             }
             Ok(count)
+        },
+    );
+
+    // MEDIAN_RANGE(c1, r1, c2, r2): median of numeric values in range
+    let grid_median = grid.clone();
+    let cache_median = value_cache.clone();
+    engine.register_fn(
+        "MEDIAN_RANGE",
+        move |ctx: NativeCallContext,
+              c1: i64,
+              r1: i64,
+              c2: i64,
+              r2: i64|
+              -> Result<f64, Box<EvalAltResult>> {
+            let (min_row, max_row, min_col, max_col) = normalize_range_coords(c1, r1, c2, r2)?;
+            let mut values = Vec::new();
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    values.push(cell_value_or_zero(&ctx, &grid_median, &cache_median, col, row));
+                }
+            }
+            if values.is_empty() {
+                return Ok(0.0);
+            }
+            values.sort_by(f64::total_cmp);
+            let n = values.len();
+            if n % 2 == 1 {
+                Ok(values[n / 2])
+            } else {
+                Ok((values[n / 2 - 1] + values[n / 2]) / 2.0)
+            }
+        },
+    );
+
+    // GEOMEAN_RANGE(c1, r1, c2, r2): geometric mean using exp(avg(ln(values)))
+    let grid_geomean = grid.clone();
+    let cache_geomean = value_cache.clone();
+    engine.register_fn(
+        "GEOMEAN_RANGE",
+        move |ctx: NativeCallContext,
+              c1: i64,
+              r1: i64,
+              c2: i64,
+              r2: i64|
+              -> Result<f64, Box<EvalAltResult>> {
+            let (min_row, max_row, min_col, max_col) = normalize_range_coords(c1, r1, c2, r2)?;
+            let mut ln_sum = 0.0;
+            let mut count = 0usize;
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    let val = cell_value_or_zero(&ctx, &grid_geomean, &cache_geomean, col, row);
+                    if val <= 0.0 {
+                        return Err(invalid_arg("GEOMEAN: all values must be positive"));
+                    }
+                    ln_sum += val.ln();
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                return Ok(0.0);
+            }
+            Ok((ln_sum / count as f64).exp())
+        },
+    );
+
+    // CONCAT_RANGE(c1, r1, c2, r2): concatenate cell values; optional separator
+    let grid_concat = grid.clone();
+    let cache_concat = value_cache.clone();
+    engine.register_fn(
+        "CONCAT_RANGE",
+        move |ctx: NativeCallContext,
+              c1: i64,
+              r1: i64,
+              c2: i64,
+              r2: i64|
+              -> Result<String, Box<EvalAltResult>> {
+            let (min_row, max_row, min_col, max_col) = normalize_range_coords(c1, r1, c2, r2)?;
+            let mut parts = Vec::new();
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    let cell_ref = CellRef::new(col, row);
+                    if let Some(cached_val) = cache_concat.get(&cell_ref) {
+                        parts.push(cached_val.to_string());
+                        continue;
+                    }
+                    if let Some(cell) = grid_concat.get(&cell_ref) {
+                        match &cell.contents {
+                            CellType::Empty => {}
+                            CellType::Number(n) => parts.push(n.to_string()),
+                            CellType::Text(s) => parts.push(s.clone()),
+                            CellType::Script(s) => {
+                                let processed = preprocess_script(s);
+                                if let Ok(val) = ctx.engine().eval::<Dynamic>(&processed) {
+                                    parts.push(val.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(parts.join(""))
+        },
+    );
+
+    let grid_concat_sep = grid.clone();
+    let cache_concat_sep = value_cache.clone();
+    engine.register_fn(
+        "CONCAT_RANGE",
+        move |ctx: NativeCallContext,
+              c1: i64,
+              r1: i64,
+              c2: i64,
+              r2: i64,
+              sep: &str|
+              -> Result<String, Box<EvalAltResult>> {
+            let (min_row, max_row, min_col, max_col) = normalize_range_coords(c1, r1, c2, r2)?;
+            let mut parts = Vec::new();
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    let cell_ref = CellRef::new(col, row);
+                    if let Some(cached_val) = cache_concat_sep.get(&cell_ref) {
+                        parts.push(cached_val.to_string());
+                        continue;
+                    }
+                    if let Some(cell) = grid_concat_sep.get(&cell_ref) {
+                        match &cell.contents {
+                            CellType::Empty => {}
+                            CellType::Number(n) => parts.push(n.to_string()),
+                            CellType::Text(s) => parts.push(s.clone()),
+                            CellType::Script(s) => {
+                                let processed = preprocess_script(s);
+                                if let Ok(val) = ctx.engine().eval::<Dynamic>(&processed) {
+                                    parts.push(val.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(parts.join(sep))
+        },
+    );
+
+    // LOOKUP_IMPL(value, sc1, sr1, sc2, sr2, rc1, rr1, rc2, rr2):
+    // Search for value in search range, return corresponding cell from return range.
+    let grid_lookup = grid.clone();
+    let cache_lookup = value_cache.clone();
+    engine.register_fn(
+        "LOOKUP_IMPL",
+        move |ctx: NativeCallContext,
+              value: Dynamic,
+              sc1: i64,
+              sr1: i64,
+              sc2: i64,
+              sr2: i64,
+              rc1: i64,
+              rr1: i64,
+              rc2: i64,
+              rr2: i64|
+              -> Result<Dynamic, Box<EvalAltResult>> {
+            let (s_min_row, s_max_row, s_min_col, s_max_col) =
+                normalize_range_coords(sc1, sr1, sc2, sr2)?;
+            let (r_min_row, r_max_row, r_min_col, r_max_col) =
+                normalize_range_coords(rc1, rr1, rc2, rr2)?;
+
+            // Collect search range coordinates
+            let mut search_coords = Vec::new();
+            for row in s_min_row..=s_max_row {
+                for col in s_min_col..=s_max_col {
+                    search_coords.push((col, row));
+                }
+            }
+            // Collect return range coordinates
+            let mut return_coords = Vec::new();
+            for row in r_min_row..=r_max_row {
+                for col in r_min_col..=r_max_col {
+                    return_coords.push((col, row));
+                }
+            }
+
+            if search_coords.len() != return_coords.len() {
+                return Err(invalid_arg(
+                    "LOOKUP: search and return ranges must have the same size",
+                ));
+            }
+
+            // Helper: get Dynamic value at (col, row)
+            let get_dynamic =
+                |col: usize, row: usize| -> Dynamic {
+                    let cell_ref = CellRef::new(col, row);
+                    if let Some(cached_val) = cache_lookup.get(&cell_ref) {
+                        return cached_val.clone();
+                    }
+                    let Some(entry) = grid_lookup.get(&cell_ref) else {
+                        return Dynamic::from("".to_string());
+                    };
+                    match &entry.contents {
+                        CellType::Empty => Dynamic::from("".to_string()),
+                        CellType::Number(n) => Dynamic::from(*n),
+                        CellType::Text(s) => Dynamic::from(s.clone()),
+                        CellType::Script(s) => {
+                            let processed = preprocess_script(s);
+                            ctx.engine()
+                                .eval::<Dynamic>(&processed)
+                                .unwrap_or(Dynamic::UNIT)
+                        }
+                    }
+                };
+
+            // Search for matching value
+            for (i, &(col, row)) in search_coords.iter().enumerate() {
+                let cell_val = get_dynamic(col, row);
+                // Compare using string representation for cross-type matching
+                let matches = if value.is_string() && cell_val.is_string() {
+                    value.clone().into_string().unwrap_or_default()
+                        == cell_val.clone().into_string().unwrap_or_default()
+                } else if let (Ok(a), Ok(b)) = (value.as_float(), cell_val.as_float()) {
+                    a == b
+                } else if let (Ok(a), Ok(b)) = (value.as_int(), cell_val.as_int()) {
+                    a == b
+                } else {
+                    value.to_string() == cell_val.to_string()
+                };
+
+                if matches {
+                    let (rcol, rrow) = return_coords[i];
+                    return Ok(get_dynamic(rcol, rrow));
+                }
+            }
+
+            Err(invalid_arg("LOOKUP: value not found"))
         },
     );
 }
@@ -1724,5 +2020,242 @@ mod tests {
         let _: () = engine.eval(r#"SET_CELL(0, 0, "=A2+B2")"#).unwrap();
         let cell = grid.get(&CellRef::new(0, 0)).unwrap();
         assert!(matches!(&cell.contents, CellType::Script(s) if s == "A2+B2"));
+    }
+
+    // --- Tests for new builtins ---
+
+    fn make_engine() -> Engine {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let value_cache = ValueCache::default();
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid, value_cache);
+        engine
+    }
+
+    fn make_engine_with_grid(grid: Grid) -> Engine {
+        let value_cache = ValueCache::default();
+        let mut engine = Engine::new();
+        register_builtins(&mut engine, grid, value_cache);
+        engine
+    }
+
+    #[test]
+    fn test_floor() {
+        let engine = make_engine();
+        assert_eq!(engine.eval::<f64>("FLOOR(2.7)").unwrap(), 2.0);
+        assert_eq!(engine.eval::<f64>("FLOOR(-2.3)").unwrap(), -3.0);
+        assert_eq!(engine.eval::<f64>("FLOOR(5)").unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_ceil() {
+        let engine = make_engine();
+        assert_eq!(engine.eval::<f64>("CEIL(2.3)").unwrap(), 3.0);
+        assert_eq!(engine.eval::<f64>("CEIL(-2.7)").unwrap(), -2.0);
+        assert_eq!(engine.eval::<f64>("CEIL(5)").unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_pi_and_e() {
+        let engine = make_engine();
+        let pi: f64 = engine.eval("PI()").unwrap();
+        assert!((pi - std::f64::consts::PI).abs() < 1e-10);
+        let e: f64 = engine.eval("E()").unwrap();
+        assert!((e - std::f64::consts::E).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_ln() {
+        let engine = make_engine();
+        let result: f64 = engine.eval("LN(1.0)").unwrap();
+        assert!((result - 0.0).abs() < 1e-10);
+        let result: f64 = engine.eval("LN(E())").unwrap();
+        assert!((result - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_log_base10() {
+        let engine = make_engine();
+        let result: f64 = engine.eval("LOG(100.0)").unwrap();
+        assert!((result - 2.0).abs() < 1e-10);
+        let result: f64 = engine.eval("LOG(1000)").unwrap();
+        assert!((result - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_log_custom_base() {
+        let engine = make_engine();
+        let result: f64 = engine.eval("LOG(8.0, 2.0)").unwrap();
+        assert!((result - 3.0).abs() < 1e-10);
+        let result: f64 = engine.eval("LOG(27, 3)").unwrap();
+        assert!((result - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_datediff_same_date() {
+        let engine = make_engine();
+        let result: i64 = engine
+            .eval(r#"DATEDIFF("2025-01-15", "2025-01-15")"#)
+            .unwrap();
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_datediff_days() {
+        let engine = make_engine();
+        let result: i64 = engine
+            .eval(r#"DATEDIFF("2025-01-15", "2025-01-01")"#)
+            .unwrap();
+        assert_eq!(result, 14 * 86400);
+    }
+
+    #[test]
+    fn test_datediff_negative() {
+        let engine = make_engine();
+        let result: i64 = engine
+            .eval(r#"DATEDIFF("2025-01-01", "2025-01-15")"#)
+            .unwrap();
+        assert_eq!(result, -14 * 86400);
+    }
+
+    #[test]
+    fn test_datediff_datetime() {
+        let engine = make_engine();
+        let result: i64 = engine
+            .eval(r#"DATEDIFF("2025-01-01 01:00:00", "2025-01-01 00:00:00")"#)
+            .unwrap();
+        assert_eq!(result, 3600);
+    }
+
+    #[test]
+    fn test_datediff_invalid() {
+        let engine = make_engine();
+        let result: Result<i64, _> = engine.eval(r#"DATEDIFF("not-a-date", "2025-01-01")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_median_odd() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(5.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(1.0));
+        grid.insert(CellRef::new(0, 2), Cell::new_number(3.0));
+        let engine = make_engine_with_grid(grid);
+        let result: f64 = engine.eval("MEDIAN_RANGE(0, 0, 0, 2)").unwrap();
+        assert_eq!(result, 3.0);
+    }
+
+    #[test]
+    fn test_median_even() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(1.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(2.0));
+        grid.insert(CellRef::new(0, 2), Cell::new_number(3.0));
+        grid.insert(CellRef::new(0, 3), Cell::new_number(4.0));
+        let engine = make_engine_with_grid(grid);
+        let result: f64 = engine.eval("MEDIAN_RANGE(0, 0, 0, 3)").unwrap();
+        assert_eq!(result, 2.5);
+    }
+
+    #[test]
+    fn test_geomean() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(2.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(8.0));
+        let engine = make_engine_with_grid(grid);
+        let result: f64 = engine.eval("GEOMEAN_RANGE(0, 0, 0, 1)").unwrap();
+        assert!((result - 4.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_geomean_rejects_non_positive() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(2.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(-1.0));
+        let engine = make_engine_with_grid(grid);
+        let result: Result<f64, _> = engine.eval("GEOMEAN_RANGE(0, 0, 0, 1)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_concat_no_separator() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_text("hello"));
+        grid.insert(CellRef::new(0, 1), Cell::new_text("world"));
+        let engine = make_engine_with_grid(grid);
+        let result: String = engine.eval("CONCAT_RANGE(0, 0, 0, 1)").unwrap();
+        assert_eq!(result, "helloworld");
+    }
+
+    #[test]
+    fn test_concat_with_separator() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_text("hello"));
+        grid.insert(CellRef::new(0, 1), Cell::new_text("world"));
+        let engine = make_engine_with_grid(grid);
+        let result: String = engine.eval(r#"CONCAT_RANGE(0, 0, 0, 1, ", ")"#).unwrap();
+        assert_eq!(result, "hello, world");
+    }
+
+    #[test]
+    fn test_concat_skips_empty() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_text("a"));
+        // row 1 is empty
+        grid.insert(CellRef::new(0, 2), Cell::new_text("b"));
+        let engine = make_engine_with_grid(grid);
+        let result: String = engine.eval(r#"CONCAT_RANGE(0, 0, 0, 2, "-")"#).unwrap();
+        assert_eq!(result, "a-b");
+    }
+
+    #[test]
+    fn test_lookup_string_match() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_text("alice"));
+        grid.insert(CellRef::new(0, 1), Cell::new_text("bob"));
+        grid.insert(CellRef::new(0, 2), Cell::new_text("carol"));
+        grid.insert(CellRef::new(1, 0), Cell::new_number(10.0));
+        grid.insert(CellRef::new(1, 1), Cell::new_number(20.0));
+        grid.insert(CellRef::new(1, 2), Cell::new_number(30.0));
+        let engine = make_engine_with_grid(grid);
+        let result: f64 = engine
+            .eval(r#"LOOKUP_IMPL("bob", 0, 0, 0, 2, 1, 0, 1, 2)"#)
+            .unwrap();
+        assert_eq!(result, 20.0);
+    }
+
+    #[test]
+    fn test_lookup_numeric_match() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(100.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(200.0));
+        grid.insert(CellRef::new(1, 0), Cell::new_text("first"));
+        grid.insert(CellRef::new(1, 1), Cell::new_text("second"));
+        let engine = make_engine_with_grid(grid);
+        let result: String = engine
+            .eval(r#"LOOKUP_IMPL(200.0, 0, 0, 0, 1, 1, 0, 1, 1)"#)
+            .unwrap();
+        assert_eq!(result, "second");
+    }
+
+    #[test]
+    fn test_lookup_not_found() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_text("alice"));
+        grid.insert(CellRef::new(1, 0), Cell::new_number(10.0));
+        let engine = make_engine_with_grid(grid);
+        let result: Result<Dynamic, _> =
+            engine.eval(r#"LOOKUP_IMPL("missing", 0, 0, 0, 0, 1, 0, 1, 0)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lookup_mismatched_ranges() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        let engine = make_engine_with_grid(grid);
+        // search range: 3 cells, return range: 2 cells
+        let result: Result<Dynamic, _> =
+            engine.eval(r#"LOOKUP_IMPL("x", 0, 0, 0, 2, 1, 0, 1, 1)"#);
+        assert!(result.is_err());
     }
 }

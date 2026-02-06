@@ -405,8 +405,34 @@ pub fn preprocess_script_with_context(script: &str, context: Option<&CellRef>) -
 }
 
 fn preprocess_script_inner(script: &str) -> String {
-    let with_ranges = crate::builtins::range_fn_re()
+    // Preprocess LOOKUP(value, search_range, return_range) before standard range functions.
+    // Converts: LOOKUP(expr, A1:A5, B1:B5) → LOOKUP_IMPL(expr, 0, 0, 0, 4, 1, 0, 1, 4)
+    let script = crate::builtins::lookup_fn_re()
         .replace_all(script, |caps: &regex::Captures| {
+            let value_expr = &caps[1];
+            let s_start = &caps[2];
+            let s_end = &caps[3];
+            let r_start = &caps[4];
+            let r_end = &caps[5];
+
+            if let (Some(ss), Some(se), Some(rs), Some(re)) = (
+                CellRef::from_str(s_start),
+                CellRef::from_str(s_end),
+                CellRef::from_str(r_start),
+                CellRef::from_str(r_end),
+            ) {
+                format!(
+                    "LOOKUP_IMPL({}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    value_expr, ss.col, ss.row, se.col, se.row, rs.col, rs.row, re.col, re.row
+                )
+            } else {
+                caps[0].to_string()
+            }
+        })
+        .to_string();
+
+    let with_ranges = crate::builtins::range_fn_re()
+        .replace_all(&script, |caps: &regex::Captures| {
             let start_ref = &caps[2];
             let end_ref = &caps[3];
             let rest_args = caps.get(4).map(|m| m.as_str()).unwrap_or("");
