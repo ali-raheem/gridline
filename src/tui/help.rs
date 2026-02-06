@@ -25,7 +25,8 @@ fn vim_help_text() -> Vec<String> {
         "  gg             Go to first cell (A1)",
         "",
         "Editing",
-        "  i / Enter      Edit cell (enter edit mode)",
+        "  i / a / Enter  Edit cell (cursor at end)",
+        "  I              Edit cell (cursor at start)",
         "  x / Delete     Clear cell",
         "  Esc            Cancel edit / exit mode",
         "",
@@ -238,6 +239,7 @@ fn action_label(action: &Action) -> &'static str {
     match action {
         Action::Cancel => "Cancel / Escape",
         Action::EnterEdit => "Edit cell",
+        Action::InsertAtStart => "Edit cell (cursor at start)",
         Action::CommitEdit => "Commit edit",
         Action::EnterCommand => "Command mode",
         Action::ExecuteCommand => "Execute command",

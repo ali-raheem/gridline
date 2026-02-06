@@ -91,6 +91,7 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
         },
 
         Action::EnterEdit => app.enter_edit_mode(),
+        Action::InsertAtStart => app.enter_edit_mode_at(true),
         Action::CommitEdit => app.commit_edit(),
         Action::EnterCommand => {
             app.mode = Mode::Command;

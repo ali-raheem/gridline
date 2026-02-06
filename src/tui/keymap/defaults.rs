@@ -25,7 +25,10 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Home => Some(Action::HomeCol),
             KeyCode::End => Some(Action::EndCol),
 
-            KeyCode::Enter | KeyCode::Char('i') => Some(Action::EnterEdit),
+            KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('a') | KeyCode::Char('A') => {
+                Some(Action::EnterEdit)
+            }
+            KeyCode::Char('I') => Some(Action::InsertAtStart),
             KeyCode::Char('x') | KeyCode::Delete => Some(Action::ClearCell),
             KeyCode::Char(':') => Some(Action::EnterCommand),
             KeyCode::Char('v') => Some(Action::EnterVisual),

@@ -151,8 +151,10 @@ impl KeymapBindings {
 pub enum Action {
     /// Cancel current operation and return to Normal mode.
     Cancel,
-    /// Enter Edit mode for the current cell.
+    /// Enter Edit mode for the current cell (cursor at end).
     EnterEdit,
+    /// Enter Edit mode with cursor at start.
+    InsertAtStart,
     /// Commit the current edit and return to Normal mode.
     CommitEdit,
     /// Enter Command mode (`:` prompt).

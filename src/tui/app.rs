@@ -268,15 +268,21 @@ impl App {
     }
 
     /// Enter edit mode for current cell
-    pub fn enter_edit_mode(&mut self) {
+    /// If `at_start` is true, cursor is placed at the beginning; otherwise at the end.
+    pub fn enter_edit_mode_at(&mut self, at_start: bool) {
         let cell_ref = self.current_cell_ref();
         self.edit_buffer = if let Some(cell) = self.core.grid.get(&cell_ref) {
             cell.to_input_string()
         } else {
             String::new()
         };
-        self.edit_cursor = self.edit_buffer.len(); // Cursor at end
+        self.edit_cursor = if at_start { 0 } else { self.edit_buffer.len() };
         self.mode = Mode::Edit;
+    }
+
+    /// Enter edit mode with cursor at end (append mode)
+    pub fn enter_edit_mode(&mut self) {
+        self.enter_edit_mode_at(false);
     }
 
     /// Commit the current edit
