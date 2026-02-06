@@ -1,7 +1,7 @@
 //! UI rendering
 
 use super::app::{App, Mode};
-use super::help::{get_about_help, get_commands_help, get_help_text};
+use super::help::{get_about_help, get_commands_help, get_functions_help, get_help_text};
 use gridline_engine::engine::CellRef;
 use gridline_engine::plot::{PLOT_PREFIX, PlotData, PlotKind, PlotSpec, parse_plot_spec};
 use ratatui::{
@@ -433,6 +433,24 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
 
     for text in get_commands_help() {
         let style = if text == "Commands" {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if text.starts_with("  ") {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        };
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+
+    // Add separator
+    lines.push(Line::from(""));
+
+    for text in get_functions_help() {
+        let style = if text == "Built-in Functions" {
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD)
