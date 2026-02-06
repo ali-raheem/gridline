@@ -13,21 +13,119 @@ use ratatui::{
 };
 use textplots::{AxisBuilder, Chart, LabelBuilder, LabelFormat, LineStyle, Plot, Shape};
 
-/// Draw the application UI
-pub fn draw(f: &mut Frame, app: &mut App) {
+pub(crate) const FORMULA_BAR_HEIGHT: u16 = 3;
+pub(crate) const GRID_MIN_HEIGHT: u16 = 10;
+pub(crate) const STATUS_BAR_HEIGHT: u16 = 1;
+pub(crate) const ROW_HEADER_WIDTH: u16 = 4;
+pub(crate) const GRID_COLUMN_SPACING: u16 = 1;
+
+pub(crate) fn split_main_chunks(area: Rect) -> [Rect; 3] {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Formula bar
-            Constraint::Min(10),   // Grid
-            Constraint::Length(1), // Status bar
+            Constraint::Length(FORMULA_BAR_HEIGHT),
+            Constraint::Min(GRID_MIN_HEIGHT),
+            Constraint::Length(STATUS_BAR_HEIGHT),
         ])
-        .split(f.area());
+        .split(area);
+    [chunks[0], chunks[1], chunks[2]]
+}
+
+pub(crate) fn grid_cell_at(
+    app: &App,
+    grid_area: Rect,
+    mouse_col: u16,
+    mouse_row: u16,
+) -> Option<(usize, usize)> {
+    if grid_area.width < 3 || grid_area.height < 4 {
+        return None;
+    }
+
+    let right = grid_area.x.saturating_add(grid_area.width);
+    let bottom = grid_area.y.saturating_add(grid_area.height);
+    if mouse_col < grid_area.x
+        || mouse_col >= right
+        || mouse_row < grid_area.y
+        || mouse_row >= bottom
+    {
+        return None;
+    }
+
+    let inner_x = grid_area.x.saturating_add(1);
+    let inner_y = grid_area.y.saturating_add(1);
+    let inner_width = grid_area.width.saturating_sub(2);
+    let inner_height = grid_area.height.saturating_sub(2);
+    let inner_right = inner_x.saturating_add(inner_width);
+    let inner_bottom = inner_y.saturating_add(inner_height);
+
+    if mouse_col < inner_x
+        || mouse_col >= inner_right
+        || mouse_row < inner_y
+        || mouse_row >= inner_bottom
+    {
+        return None;
+    }
+
+    // Header row contains column letters, not data cells.
+    if inner_height <= 1 || mouse_row == inner_y {
+        return None;
+    }
+
+    let rel_row = mouse_row.saturating_sub(inner_y.saturating_add(1)) as usize;
+    if rel_row >= app.visible_rows {
+        return None;
+    }
+    let row = app.viewport_row.saturating_add(rel_row);
+    if row >= app.max_rows {
+        return None;
+    }
+
+    let row_header_end = inner_x.saturating_add(ROW_HEADER_WIDTH);
+    if mouse_col < row_header_end {
+        return None;
+    }
+
+    let mut x = row_header_end;
+    let first_spacing_end = x.saturating_add(GRID_COLUMN_SPACING);
+    if mouse_col >= x && mouse_col < first_spacing_end {
+        return None;
+    }
+    x = first_spacing_end;
+
+    for offset in 0..app.visible_cols {
+        let col = app.viewport_col + offset;
+        if col >= app.max_cols {
+            break;
+        }
+
+        let width = app.get_column_width(col) as u16;
+        let cell_end = x.saturating_add(width);
+        if mouse_col >= x && mouse_col < cell_end && mouse_col < inner_right {
+            return Some((col, row));
+        }
+
+        x = cell_end;
+        let spacing_end = x.saturating_add(GRID_COLUMN_SPACING);
+        if mouse_col >= x && mouse_col < spacing_end {
+            return None;
+        }
+        x = spacing_end;
+
+        if x >= inner_right {
+            break;
+        }
+    }
+
+    None
+}
+
+/// Draw the application UI
+pub fn draw(f: &mut Frame, app: &mut App) {
+    let chunks = split_main_chunks(f.area());
 
     // Update visible dimensions based on actual size
     let grid_area = chunks[1];
-    let row_header_width = 4; // "999 " width
-    let available_width = grid_area.width.saturating_sub(row_header_width + 2) as usize;
+    let available_width = grid_area.width.saturating_sub(ROW_HEADER_WIDTH + 2) as usize;
     let available_height = grid_area.height.saturating_sub(3) as usize; // header + borders
 
     app.visible_cols = (available_width / (app.col_width + 1)).max(1);
@@ -179,7 +277,7 @@ fn draw_grid(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // Build column widths dynamically based on per-column settings
-    let mut widths = vec![Constraint::Length(4)]; // Row header
+    let mut widths = vec![Constraint::Length(ROW_HEADER_WIDTH)]; // Row header
     for col in app.viewport_col..app.viewport_col + app.visible_cols {
         if col >= app.max_cols {
             break;
@@ -190,7 +288,7 @@ fn draw_grid(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(rows, widths)
         .header(header)
         .block(Block::default().borders(Borders::ALL).title(" Gridline "))
-        .column_spacing(1);
+        .column_spacing(GRID_COLUMN_SPACING);
 
     f.render_widget(table, area);
 }
@@ -477,4 +575,113 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
 
     f.render_widget(Clear, area);
     f.render_widget(paragraph, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn first_body_cell_point(grid_area: Rect) -> (u16, u16) {
+        (
+            grid_area.x + 1 + ROW_HEADER_WIDTH + GRID_COLUMN_SPACING,
+            grid_area.y + 2,
+        )
+    }
+
+    #[test]
+    fn grid_cell_at_maps_first_visible_cell_to_viewport_origin() {
+        let mut app = App::new();
+        app.viewport_col = 5;
+        app.viewport_row = 7;
+        app.visible_cols = 4;
+        app.visible_rows = 4;
+
+        let grid_area = Rect::new(0, 0, 80, 20);
+        let (x, y) = first_body_cell_point(grid_area);
+
+        assert_eq!(grid_cell_at(&app, grid_area, x, y), Some((5, 7)));
+    }
+
+    #[test]
+    fn grid_cell_at_maps_second_column_with_custom_width_and_spacing() {
+        let mut app = App::new();
+        app.viewport_col = 3;
+        app.viewport_row = 2;
+        app.visible_cols = 3;
+        app.visible_rows = 3;
+        app.column_widths.insert(3, 10);
+        app.column_widths.insert(4, 8);
+
+        let grid_area = Rect::new(0, 0, 80, 20);
+        let (first_x, y) = first_body_cell_point(grid_area);
+        let second_col_start = first_x + app.get_column_width(3) as u16 + GRID_COLUMN_SPACING;
+
+        assert_eq!(
+            grid_cell_at(&app, grid_area, second_col_start + 1, y),
+            Some((4, 2))
+        );
+    }
+
+    #[test]
+    fn grid_cell_at_ignores_row_headers() {
+        let mut app = App::new();
+        app.visible_cols = 4;
+        app.visible_rows = 4;
+
+        let grid_area = Rect::new(0, 0, 80, 20);
+        assert_eq!(
+            grid_cell_at(&app, grid_area, grid_area.x + 2, grid_area.y + 2),
+            None
+        );
+    }
+
+    #[test]
+    fn grid_cell_at_ignores_column_headers() {
+        let mut app = App::new();
+        app.visible_cols = 4;
+        app.visible_rows = 4;
+
+        let grid_area = Rect::new(0, 0, 80, 20);
+        let (x, _y) = first_body_cell_point(grid_area);
+
+        assert_eq!(grid_cell_at(&app, grid_area, x, grid_area.y + 1), None);
+    }
+
+    #[test]
+    fn grid_cell_at_ignores_outside_grid_and_spacing() {
+        let mut app = App::new();
+        app.visible_cols = 4;
+        app.visible_rows = 4;
+
+        let grid_area = Rect::new(0, 0, 80, 20);
+        let (first_x, y) = first_body_cell_point(grid_area);
+        let spacing_x = first_x + app.get_column_width(app.viewport_col) as u16;
+
+        assert_eq!(
+            grid_cell_at(&app, grid_area, grid_area.x, grid_area.y),
+            None
+        );
+        assert_eq!(grid_cell_at(&app, grid_area, spacing_x, y), None);
+    }
+
+    #[test]
+    fn grid_cell_at_respects_max_bounds() {
+        let mut app = App::new();
+        app.max_cols = 1;
+        app.max_rows = 1;
+        app.visible_cols = 3;
+        app.visible_rows = 3;
+
+        let grid_area = Rect::new(0, 0, 80, 20);
+        let (first_x, first_y) = first_body_cell_point(grid_area);
+        let second_col_x = first_x + app.get_column_width(0) as u16 + GRID_COLUMN_SPACING + 1;
+        let second_row_y = first_y + 1;
+
+        assert_eq!(
+            grid_cell_at(&app, grid_area, first_x, first_y),
+            Some((0, 0))
+        );
+        assert_eq!(grid_cell_at(&app, grid_area, second_col_x, first_y), None);
+        assert_eq!(grid_cell_at(&app, grid_area, first_x, second_row_y), None);
+    }
 }

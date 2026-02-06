@@ -361,8 +361,7 @@ impl App {
                     let start_idx = matches
                         .iter()
                         .position(|m| {
-                            m.row > cursor.row
-                                || (m.row == cursor.row && m.col >= cursor.col)
+                            m.row > cursor.row || (m.row == cursor.row && m.col >= cursor.col)
                         })
                         .unwrap_or(0);
 
@@ -371,8 +370,7 @@ impl App {
                     self.search_matches = matches;
                     self.search_index = start_idx;
                     self.jump_to_search_match();
-                    self.status_message =
-                        format!("/{}/  [{}/{}]", pattern, start_idx + 1, count);
+                    self.status_message = format!("/{}/  [{}/{}]", pattern, start_idx + 1, count);
                 }
             }
             Err(e) => {
@@ -389,11 +387,7 @@ impl App {
         }
         self.search_index = (self.search_index + 1) % self.search_matches.len();
         self.jump_to_search_match();
-        self.status_message = format!(
-            "[{}/{}]",
-            self.search_index + 1,
-            self.search_matches.len()
-        );
+        self.status_message = format!("[{}/{}]", self.search_index + 1, self.search_matches.len());
     }
 
     /// Jump to previous search match.
@@ -408,11 +402,7 @@ impl App {
             self.search_index -= 1;
         }
         self.jump_to_search_match();
-        self.status_message = format!(
-            "[{}/{}]",
-            self.search_index + 1,
-            self.search_matches.len()
-        );
+        self.status_message = format!("[{}/{}]", self.search_index + 1, self.search_matches.len());
     }
 
     /// Move cursor to the current search match.
@@ -830,6 +820,53 @@ impl App {
         self.update_viewport();
     }
 
+    fn row_data_col_bounds(&self, row: usize) -> Option<(usize, usize)> {
+        let mut min_col = usize::MAX;
+        let mut max_col = 0usize;
+        let mut found = false;
+
+        for entry in self.core.grid.iter() {
+            if entry.key().row == row {
+                found = true;
+                min_col = min_col.min(entry.key().col);
+                max_col = max_col.max(entry.key().col);
+            }
+        }
+
+        // Include cached/spilled values that are not materialized in the grid.
+        for entry in self.core.value_cache.iter() {
+            if entry.key().row == row {
+                found = true;
+                min_col = min_col.min(entry.key().col);
+                max_col = max_col.max(entry.key().col);
+            }
+        }
+
+        if found {
+            Some((min_col, max_col))
+        } else {
+            None
+        }
+    }
+
+    /// Go to the first non-empty column in the current row, or A if none.
+    pub fn goto_row_data_first_col(&mut self) {
+        self.cursor_col = self
+            .row_data_col_bounds(self.cursor_row)
+            .map(|(min_col, _)| min_col)
+            .unwrap_or(0);
+        self.update_viewport();
+    }
+
+    /// Go to the last non-empty column in the current row, or A if none.
+    pub fn goto_row_data_last_col(&mut self) {
+        self.cursor_col = self
+            .row_data_col_bounds(self.cursor_row)
+            .map(|(_, max_col)| max_col)
+            .unwrap_or(0);
+        self.update_viewport();
+    }
+
     /// Go to the last row with data in the current column, or last row if no data
     pub fn goto_last(&mut self) {
         // Find the last row with data in any column
@@ -1238,5 +1275,57 @@ mod tests {
 
         let huge = "Z".repeat(40);
         assert!(parse_column_letter(&huge).is_none());
+    }
+
+    #[test]
+    fn test_goto_row_data_columns_use_row_bounds() {
+        let mut app = App::new();
+        app.cursor_row = 2;
+        app.cursor_col = 0;
+        app.core
+            .set_cell_from_input(CellRef::new(6, 2), "right")
+            .expect("set right");
+        app.core
+            .set_cell_from_input(CellRef::new(2, 2), "left")
+            .expect("set left");
+
+        app.goto_row_data_first_col();
+        assert_eq!(app.cursor_col, 2);
+
+        app.goto_row_data_last_col();
+        assert_eq!(app.cursor_col, 6);
+    }
+
+    #[test]
+    fn test_goto_row_data_columns_fall_back_to_a_on_empty_row() {
+        let mut app = App::new();
+        app.cursor_row = 9;
+        app.cursor_col = 5;
+
+        app.goto_row_data_first_col();
+        assert_eq!(app.cursor_col, 0);
+
+        app.cursor_col = 5;
+        app.goto_row_data_last_col();
+        assert_eq!(app.cursor_col, 0);
+    }
+
+    #[test]
+    fn test_delete_row_then_undo_restores_row() {
+        let mut app = App::new();
+        app.core
+            .set_cell_from_input(CellRef::new(0, 0), "\"top\"")
+            .unwrap();
+        app.core
+            .set_cell_from_input(CellRef::new(0, 1), "\"second\"")
+            .unwrap();
+        app.cursor_row = 0;
+
+        app.delete_row();
+        assert_eq!(app.core.get_cell_display(&CellRef::new(0, 0)), "second");
+
+        app.undo();
+        assert_eq!(app.core.get_cell_display(&CellRef::new(0, 0)), "top");
+        assert_eq!(app.core.get_cell_display(&CellRef::new(0, 1)), "second");
     }
 }

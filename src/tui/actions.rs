@@ -3,6 +3,24 @@ use crossterm::event::{self, KeyCode, KeyModifiers};
 use super::app::{App, Mode};
 use super::keymap::Action;
 
+fn modifiers_only_include(modifiers: KeyModifiers, allowed: KeyModifiers) -> bool {
+    (modifiers & !allowed).is_empty()
+}
+
+fn allows_text_char_input(modifiers: KeyModifiers) -> bool {
+    if modifiers.is_empty() {
+        return true;
+    }
+    if modifiers_only_include(modifiers, KeyModifiers::SHIFT) {
+        return true;
+    }
+
+    // On Windows and some Linux layouts, AltGr is reported as Ctrl+Alt.
+    // Treat AltGr as printable text input for symbols like '|', '@', and '{'.
+    let alt_gr = KeyModifiers::CONTROL | KeyModifiers::ALT;
+    modifiers.contains(alt_gr) && modifiers_only_include(modifiers, alt_gr | KeyModifiers::SHIFT)
+}
+
 /// Handle text editing operations on a buffer with UTF-8 aware cursor movement.
 fn handle_text_input(buffer: &mut String, cursor: &mut usize, key: event::KeyEvent) {
     match key.code {
@@ -52,7 +70,7 @@ fn handle_text_input(buffer: &mut String, cursor: &mut usize, key: event::KeyEve
             }
         }
         KeyCode::Char(c) => {
-            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
+            if allows_text_char_input(key.modifiers) {
                 buffer.insert(*cursor, c);
                 *cursor += c.len_utf8();
             }
@@ -136,12 +154,23 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
         Action::OpenPlot => app.open_plot_modal_at_cursor(),
         Action::FreezeCell => app.freeze_current_cell(),
         Action::FreezeAll => app.freeze_all_cells(),
+        Action::OpenRowBelowEdit => {
+            app.move_cursor(0, 1);
+            app.insert_row();
+            app.enter_edit_mode();
+        }
+        Action::OpenRowAboveEdit => {
+            app.insert_row();
+            app.enter_edit_mode();
+        }
 
         Action::Move(dx, dy) => app.move_cursor(dx, dy),
         Action::Page(dir) => {
             let delta = app.visible_rows as i32 * dir;
             app.move_cursor(0, delta);
         }
+        Action::HomeDataCol => app.goto_row_data_first_col(),
+        Action::EndDataCol => app.goto_row_data_last_col(),
         Action::HomeCol => {
             app.cursor_col = 0;
             app.update_viewport();
@@ -178,4 +207,144 @@ pub fn handle_edit_text(app: &mut App, key: event::KeyEvent) {
 
 pub fn handle_command_text(app: &mut App, key: event::KeyEvent) {
     handle_text_input(&mut app.command_buffer, &mut app.command_cursor, key);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+    use gridline_engine::engine::CellRef;
+
+    #[test]
+    fn handle_text_input_accepts_altgr_symbols() {
+        let mut buffer = String::new();
+        let mut cursor = 0;
+        let key = KeyEvent::new(
+            KeyCode::Char('|'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        );
+
+        handle_text_input(&mut buffer, &mut cursor, key);
+
+        assert_eq!(buffer, "|");
+        assert_eq!(cursor, 1);
+    }
+
+    #[test]
+    fn handle_text_input_accepts_shift_altgr_symbols() {
+        let mut buffer = String::new();
+        let mut cursor = 0;
+        let key = KeyEvent::new(
+            KeyCode::Char('€'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+        );
+
+        handle_text_input(&mut buffer, &mut cursor, key);
+
+        assert_eq!(buffer, "€");
+        assert_eq!(cursor, '€'.len_utf8());
+    }
+
+    #[test]
+    fn handle_text_input_rejects_plain_ctrl_chars() {
+        let mut buffer = String::new();
+        let mut cursor = 0;
+        let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL);
+
+        handle_text_input(&mut buffer, &mut cursor, key);
+
+        assert_eq!(buffer, "");
+        assert_eq!(cursor, 0);
+    }
+
+    #[test]
+    fn apply_action_open_row_above_edit_inserts_and_enters_edit_mode() {
+        let mut app = App::new();
+        app.cursor_col = 1;
+        app.cursor_row = 0;
+        app.core
+            .set_cell_from_input(CellRef::new(1, 0), "top")
+            .expect("seed top cell");
+
+        let result = apply_action(
+            &mut app,
+            Action::OpenRowAboveEdit,
+            KeyEvent::new(KeyCode::Char('O'), KeyModifiers::empty()),
+        );
+
+        assert_eq!(result, ApplyResult::Continue);
+        assert!(matches!(app.mode, Mode::Edit));
+        assert_eq!(app.cursor_col, 1);
+        assert_eq!(app.cursor_row, 0);
+        assert_eq!(app.core.get_cell_display(&CellRef::new(1, 0)), "");
+        assert_eq!(app.core.get_cell_display(&CellRef::new(1, 1)), "top");
+    }
+
+    #[test]
+    fn apply_action_open_row_below_edit_inserts_and_enters_edit_mode() {
+        let mut app = App::new();
+        app.cursor_col = 1;
+        app.cursor_row = 0;
+        app.core
+            .set_cell_from_input(CellRef::new(1, 0), "top")
+            .expect("seed top cell");
+        app.core
+            .set_cell_from_input(CellRef::new(1, 1), "below")
+            .expect("seed second row");
+
+        let result = apply_action(
+            &mut app,
+            Action::OpenRowBelowEdit,
+            KeyEvent::new(KeyCode::Char('o'), KeyModifiers::empty()),
+        );
+
+        assert_eq!(result, ApplyResult::Continue);
+        assert!(matches!(app.mode, Mode::Edit));
+        assert_eq!(app.cursor_col, 1);
+        assert_eq!(app.cursor_row, 1);
+        assert_eq!(app.core.get_cell_display(&CellRef::new(1, 0)), "top");
+        assert_eq!(app.core.get_cell_display(&CellRef::new(1, 1)), "");
+        assert_eq!(app.core.get_cell_display(&CellRef::new(1, 2)), "below");
+    }
+
+    #[test]
+    fn apply_action_home_and_end_data_col_use_data_bounds() {
+        let mut app = App::new();
+        app.cursor_row = 3;
+        app.cursor_col = 5;
+        app.core
+            .set_cell_from_input(CellRef::new(7, 3), "right")
+            .expect("set right");
+        app.core
+            .set_cell_from_input(CellRef::new(2, 3), "left")
+            .expect("set left");
+
+        let _ = apply_action(
+            &mut app,
+            Action::HomeDataCol,
+            KeyEvent::new(KeyCode::Char('0'), KeyModifiers::empty()),
+        );
+        assert_eq!(app.cursor_col, 2);
+
+        let _ = apply_action(
+            &mut app,
+            Action::EndDataCol,
+            KeyEvent::new(KeyCode::Char('$'), KeyModifiers::SHIFT),
+        );
+        assert_eq!(app.cursor_col, 7);
+    }
+
+    #[test]
+    fn apply_action_end_data_col_falls_back_to_a_when_row_is_empty() {
+        let mut app = App::new();
+        app.cursor_row = 8;
+        app.cursor_col = 4;
+
+        let _ = apply_action(
+            &mut app,
+            Action::EndDataCol,
+            KeyEvent::new(KeyCode::Char('$'), KeyModifiers::SHIFT),
+        );
+        assert_eq!(app.cursor_col, 0);
+    }
 }

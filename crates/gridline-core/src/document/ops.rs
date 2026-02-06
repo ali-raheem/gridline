@@ -55,6 +55,43 @@ fn frozen_cell_from_dynamic(value: &Dynamic) -> Cell {
 }
 
 impl Document {
+    fn snapshot_grid(&self) -> std::collections::HashMap<CellRef, Cell> {
+        self.grid
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect()
+    }
+
+    fn push_undo_for_grid_delta(&mut self, before: std::collections::HashMap<CellRef, Cell>) {
+        let after = self.snapshot_grid();
+        let mut refs = std::collections::HashSet::with_capacity(before.len() + after.len());
+        refs.extend(before.keys().cloned());
+        refs.extend(after.keys().cloned());
+
+        let mut actions = Vec::new();
+        for cell_ref in refs {
+            let old_cell = before.get(&cell_ref).cloned();
+            let new_cell = after.get(&cell_ref).cloned();
+            let old_input = old_cell.as_ref().map(Cell::to_input_string);
+            let new_input = new_cell.as_ref().map(Cell::to_input_string);
+            if old_input != new_input {
+                actions.push(UndoAction {
+                    cell_ref,
+                    old_cell,
+                    new_cell,
+                });
+            }
+        }
+
+        actions.sort_by(|a, b| {
+            a.cell_ref
+                .row
+                .cmp(&b.cell_ref.row)
+                .then(a.cell_ref.col.cmp(&b.cell_ref.col))
+        });
+        self.push_undo_batch(actions);
+    }
+
     /// Mark all cells that depend (transitively) on the changed cell as dirty
     fn mark_dependents_dirty(&mut self, changed_cell: &CellRef) {
         let mut to_process = vec![changed_cell.clone()];
@@ -243,6 +280,8 @@ impl Document {
 
     /// Generic insert operation for row or column
     fn insert_dimension(&mut self, dim: Dimension, at: usize) {
+        let before = self.snapshot_grid();
+
         // Collect all cells at coord >= at
         let cells_to_move: Vec<(CellRef, Cell)> = self
             .grid
@@ -296,11 +335,14 @@ impl Document {
         self.invalidate_script_cache();
         // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
+        self.push_undo_for_grid_delta(before);
         self.modified = true;
     }
 
     /// Generic delete operation for row or column
     fn delete_dimension(&mut self, dim: Dimension, at: usize) {
+        let before = self.snapshot_grid();
+
         // Collect cells at the deleted coordinate
         let cells_at: Vec<CellRef> = self
             .grid
@@ -376,6 +418,7 @@ impl Document {
         self.invalidate_script_cache();
         // Rebuild dependencies (DashMap shares data, so builtins already see updates)
         self.rebuild_dependents();
+        self.push_undo_for_grid_delta(before);
         self.modified = true;
     }
 
@@ -751,6 +794,40 @@ mod tests {
         core.delete_column(1);
         assert!(core.value_cache.is_empty());
         assert!(core.spill_sources.is_empty());
+    }
+
+    #[test]
+    fn test_delete_row_is_undoable() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "\"top\"")
+            .unwrap(); // A1
+        core.set_cell_from_input(CellRef::new(0, 1), "\"second\"")
+            .unwrap(); // A2
+
+        core.delete_row(0);
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "second");
+
+        core.undo().unwrap();
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "top");
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "second");
+    }
+
+    #[test]
+    fn test_insert_row_is_undoable() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "\"top\"")
+            .unwrap(); // A1
+        core.set_cell_from_input(CellRef::new(0, 1), "\"second\"")
+            .unwrap(); // A2
+
+        core.insert_row(0);
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "");
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "top");
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 2)), "second");
+
+        core.undo().unwrap();
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "top");
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "second");
     }
 
     #[test]

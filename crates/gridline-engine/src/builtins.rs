@@ -931,9 +931,7 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     });
 
     // ISTEXT(val): true if value is a string
-    engine.register_fn("ISTEXT", |val: Dynamic| -> bool {
-        val.is_string()
-    });
+    engine.register_fn("ISTEXT", |val: Dynamic| -> bool { val.is_string() });
 
     // ISEMPTY(val): true if value is empty string or unit
     engine.register_fn("ISEMPTY", |val: Dynamic| -> bool {
@@ -993,12 +991,8 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
     engine.register_fn("LOG", |x: i64, base: i64| -> f64 {
         (x as f64).log(base as f64)
     });
-    engine.register_fn("LOG", |x: f64, base: i64| -> f64 {
-        x.log(base as f64)
-    });
-    engine.register_fn("LOG", |x: i64, base: f64| -> f64 {
-        (x as f64).log(base)
-    });
+    engine.register_fn("LOG", |x: f64, base: i64| -> f64 { x.log(base as f64) });
+    engine.register_fn("LOG", |x: i64, base: f64| -> f64 { (x as f64).log(base) });
 
     // SUMIF(c1, r1, c2, r2, predicate): sum values where predicate returns true
     let grid_sumif = grid.clone();
@@ -1093,7 +1087,13 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             let mut values = Vec::new();
             for row in min_row..=max_row {
                 for col in min_col..=max_col {
-                    values.push(cell_value_or_zero(&ctx, &grid_median, &cache_median, col, row));
+                    values.push(cell_value_or_zero(
+                        &ctx,
+                        &grid_median,
+                        &cache_median,
+                        col,
+                        row,
+                    ));
                 }
             }
             if values.is_empty() {
@@ -1262,27 +1262,26 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
             }
 
             // Helper: get Dynamic value at (col, row)
-            let get_dynamic =
-                |col: usize, row: usize| -> Dynamic {
-                    let cell_ref = CellRef::new(col, row);
-                    if let Some(cached_val) = cache_lookup.get(&cell_ref) {
-                        return cached_val.clone();
-                    }
-                    let Some(entry) = grid_lookup.get(&cell_ref) else {
-                        return Dynamic::from("".to_string());
-                    };
-                    match &entry.contents {
-                        CellType::Empty => Dynamic::from("".to_string()),
-                        CellType::Number(n) => Dynamic::from(*n),
-                        CellType::Text(s) => Dynamic::from(s.clone()),
-                        CellType::Script(s) => {
-                            let processed = preprocess_script(s);
-                            ctx.engine()
-                                .eval::<Dynamic>(&processed)
-                                .unwrap_or(Dynamic::UNIT)
-                        }
-                    }
+            let get_dynamic = |col: usize, row: usize| -> Dynamic {
+                let cell_ref = CellRef::new(col, row);
+                if let Some(cached_val) = cache_lookup.get(&cell_ref) {
+                    return cached_val.clone();
+                }
+                let Some(entry) = grid_lookup.get(&cell_ref) else {
+                    return Dynamic::from("".to_string());
                 };
+                match &entry.contents {
+                    CellType::Empty => Dynamic::from("".to_string()),
+                    CellType::Number(n) => Dynamic::from(*n),
+                    CellType::Text(s) => Dynamic::from(s.clone()),
+                    CellType::Script(s) => {
+                        let processed = preprocess_script(s);
+                        ctx.engine()
+                            .eval::<Dynamic>(&processed)
+                            .unwrap_or(Dynamic::UNIT)
+                    }
+                }
+            };
 
             // Search for matching value
             for (i, &(col, row)) in search_coords.iter().enumerate() {
@@ -2302,8 +2301,7 @@ mod tests {
         let grid: Grid = std::sync::Arc::new(DashMap::new());
         let engine = make_engine_with_grid(grid);
         // search range: 3 cells, return range: 2 cells
-        let result: Result<Dynamic, _> =
-            engine.eval(r#"LOOKUP_IMPL("x", 0, 0, 0, 2, 1, 0, 1, 1)"#);
+        let result: Result<Dynamic, _> = engine.eval(r#"LOOKUP_IMPL("x", 0, 0, 0, 2, 1, 0, 1, 1)"#);
         assert!(result.is_err());
     }
 

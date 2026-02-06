@@ -28,7 +28,7 @@ impl Keymap {
     pub fn status_hint(&self) -> String {
         match self {
             Keymap::Vim => {
-                "hjkl:move  i:edit  v:visual  y:yank  p:paste  zf:freeze  P:plot  gg/G:first/last  :w:save  :q:quit".to_string()
+                "hjkl:move  0/$:data col edges  i/o/O:edit  v:visual  y:yank  p:paste  zf:freeze  P:plot  gg/G:first/last  :w:save  :q:quit".to_string()
             }
             Keymap::Emacs => {
                 "C-n/p/f/b:move  Enter:edit  M-x:cmd  C-s:save  M-w:copy  C-y:paste  C-SPC:mark  C-g:cancel  M-p:plot".to_string()
@@ -191,6 +191,14 @@ pub enum Action {
     FreezeCell,
     /// Freeze every formula/spill in the sheet to current values.
     FreezeAll,
+    /// Jump to the first non-empty column in the current row (or A if none).
+    HomeDataCol,
+    /// Jump to the last non-empty column in the current row (or A if none).
+    EndDataCol,
+    /// Insert a row below and enter edit mode.
+    OpenRowBelowEdit,
+    /// Insert a row above and enter edit mode.
+    OpenRowAboveEdit,
 
     /// Move cursor by (dx, dy).
     Move(i32, i32),

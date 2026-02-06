@@ -28,11 +28,15 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::GotoLast),
             KeyCode::Home => Some(Action::HomeCol),
             KeyCode::End => Some(Action::EndCol),
+            KeyCode::Char('0') => Some(Action::HomeDataCol),
+            KeyCode::Char('$') => Some(Action::EndDataCol),
 
             KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('a') | KeyCode::Char('A') => {
                 Some(Action::EnterEdit)
             }
             KeyCode::Char('I') => Some(Action::InsertAtStart),
+            KeyCode::Char('o') => Some(Action::OpenRowBelowEdit),
+            KeyCode::Char('O') => Some(Action::OpenRowAboveEdit),
             KeyCode::Char('x') | KeyCode::Delete => Some(Action::ClearCell),
             KeyCode::Char('S') => Some(Action::ChangeCell),
             KeyCode::Char(':') => Some(Action::EnterCommand),
@@ -202,5 +206,37 @@ pub(crate) fn translate_emacs(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::ExecuteCommand),
             _ => None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_vim_maps_zero_and_dollar_to_column_edges() {
+        let zero = KeyEvent::new(KeyCode::Char('0'), KeyModifiers::empty());
+        let dollar = KeyEvent::new(KeyCode::Char('$'), KeyModifiers::SHIFT);
+
+        assert_eq!(translate_vim(Mode::Normal, zero), Some(Action::HomeDataCol));
+        assert_eq!(
+            translate_vim(Mode::Normal, dollar),
+            Some(Action::EndDataCol)
+        );
+    }
+
+    #[test]
+    fn translate_vim_maps_o_and_upper_o_to_open_row_edit_actions() {
+        let o = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::empty());
+        let upper_o = KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT);
+
+        assert_eq!(
+            translate_vim(Mode::Normal, o),
+            Some(Action::OpenRowBelowEdit)
+        );
+        assert_eq!(
+            translate_vim(Mode::Normal, upper_o),
+            Some(Action::OpenRowAboveEdit)
+        );
     }
 }

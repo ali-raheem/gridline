@@ -364,6 +364,10 @@ fn action_from_str(input: &str) -> Option<Action> {
         "open_plot" => Some(Action::OpenPlot),
         "freeze_cell" => Some(Action::FreezeCell),
         "freeze_all" => Some(Action::FreezeAll),
+        "home_data_col" => Some(Action::HomeDataCol),
+        "end_data_col" => Some(Action::EndDataCol),
+        "open_row_below_edit" => Some(Action::OpenRowBelowEdit),
+        "open_row_above_edit" => Some(Action::OpenRowAboveEdit),
         "move_left" => Some(Action::Move(-1, 0)),
         "move_right" => Some(Action::Move(1, 0)),
         "move_up" => Some(Action::Move(0, -1)),
@@ -455,6 +459,24 @@ mod tests {
     fn action_from_str_freeze_actions() {
         assert_eq!(action_from_str("freeze_cell"), Some(Action::FreezeCell));
         assert_eq!(action_from_str("freeze_all"), Some(Action::FreezeAll));
+    }
+
+    #[test]
+    fn action_from_str_open_row_edit_actions() {
+        assert_eq!(
+            action_from_str("open_row_below_edit"),
+            Some(Action::OpenRowBelowEdit)
+        );
+        assert_eq!(
+            action_from_str("open_row_above_edit"),
+            Some(Action::OpenRowAboveEdit)
+        );
+    }
+
+    #[test]
+    fn action_from_str_data_column_actions() {
+        assert_eq!(action_from_str("home_data_col"), Some(Action::HomeDataCol));
+        assert_eq!(action_from_str("end_data_col"), Some(Action::EndDataCol));
     }
 
     #[test]

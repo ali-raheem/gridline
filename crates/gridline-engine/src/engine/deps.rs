@@ -61,7 +61,9 @@ pub fn extract_dependencies(script: &str) -> Vec<CellRef> {
     let range_re = crate::builtins::range_fn_re();
 
     // First, remove range function calls from the script to avoid double-counting
-    let script_without_ranges = range_re.replace_all(&script_without_lookups, "").to_string();
+    let script_without_ranges = range_re
+        .replace_all(&script_without_lookups, "")
+        .to_string();
 
     // Extract dependencies from ranges
     for caps in range_re.captures_iter(&script_without_lookups) {
