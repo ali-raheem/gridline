@@ -170,11 +170,16 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
             }
 
             if let Some(action) = translate(&app.keymap, app.mode, key) {
-                // Apply pending count to movement actions
-                let count = app.pending_count.take().unwrap_or(1) as i32;
+                // Apply pending count to movement and paste actions
+                let count = app.pending_count.take().unwrap_or(1);
                 let action = match action {
-                    Action::Move(dx, dy) => Action::Move(dx * count, dy * count),
-                    Action::Page(dir) => Action::Page(dir * count),
+                    Action::Move(dx, dy) => Action::Move(dx * count as i32, dy * count as i32),
+                    Action::Page(dir) => Action::Page(dir * count as i32),
+                    Action::Paste => {
+                        // Handle paste with count directly
+                        app.paste_with_count(count);
+                        continue;
+                    }
                     other => other,
                 };
                 if apply_action(app, action, key) == ApplyResult::Quit {

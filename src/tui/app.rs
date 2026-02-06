@@ -588,6 +588,11 @@ impl App {
 
     /// Paste clipboard at current cursor position
     pub fn paste(&mut self) {
+        self.paste_with_count(1);
+    }
+
+    /// Paste clipboard multiple times (for number prefix, e.g., 3p)
+    pub fn paste_with_count(&mut self, count: usize) {
         let Some(clipboard) = &self.clipboard else {
             self.status_message = "Nothing to paste".to_string();
             return;
@@ -595,19 +600,29 @@ impl App {
 
         let base_row = self.cursor_row;
         let base_col = self.cursor_col;
-        match self.core.paste_cells(
-            base_col,
-            base_row,
-            clipboard.source_col,
-            clipboard.source_row,
-            &clipboard.cells,
-        ) {
-            Ok(pasted) => {
-                self.status_message = format!("Pasted {} cells", pasted);
+        let _clip_width = clipboard.width; // Reserved for horizontal paste-repeat
+        let clip_height = clipboard.height;
+        let source_col = clipboard.source_col;
+        let source_row = clipboard.source_row;
+        let cells = clipboard.cells.clone();
+
+        let mut total_pasted = 0;
+        for i in 0..count {
+            // Offset each paste by clipboard dimensions (paste downward)
+            let paste_row = base_row + (i * clip_height);
+            match self.core.paste_cells(base_col, paste_row, source_col, source_row, &cells) {
+                Ok(pasted) => total_pasted += pasted,
+                Err(e) => {
+                    self.status_message = format!("Paste failed: {}", e);
+                    return;
+                }
             }
-            Err(e) => {
-                self.status_message = format!("Paste failed: {}", e);
-            }
+        }
+
+        if count > 1 {
+            self.status_message = format!("Pasted {} cells ({} times)", total_pasted, count);
+        } else {
+            self.status_message = format!("Pasted {} cells", total_pasted);
         }
     }
 
