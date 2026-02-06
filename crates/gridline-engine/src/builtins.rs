@@ -846,6 +846,16 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
+    // TODAY(): current date as string
+    engine.register_fn("TODAY", || -> String {
+        chrono::Local::now().format("%Y-%m-%d").to_string()
+    });
+
+    // NOW(): current date and time as string
+    engine.register_fn("NOW", || -> String {
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    });
+
     // IF(cond, then_val, else_val): conditional expression
     engine.register_fn(
         "IF",
