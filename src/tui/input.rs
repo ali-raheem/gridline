@@ -86,29 +86,64 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                 }
             }
 
-            // Handle Vim 'gg' sequence (go to first cell)
+            // Handle Vim key sequences (gg, dd, yy) in Normal mode
             if matches!(app.keymap, Keymap::Vim) && app.mode == Mode::Normal {
+                // Handle 'gg' sequence (go to first cell)
                 if key.code == KeyCode::Char('g') && key.modifiers.is_empty() {
                     if app.pending_g {
-                        // Second 'g' pressed -> goto first
                         app.pending_g = false;
                         if apply_action(app, Action::GotoFirst, key) == ApplyResult::Quit {
                             return Ok(());
                         }
                         continue;
                     } else {
-                        // First 'g' pressed -> wait for second key
                         app.pending_g = true;
+                        app.pending_d = false;
+                        app.pending_y = false;
                         continue;
                     }
                 } else if app.pending_g {
-                    // Different key after 'g' -> open goto prompt and process this key
                     app.pending_g = false;
                     if apply_action(app, Action::OpenGotoPrompt, key) == ApplyResult::Quit {
                         return Ok(());
                     }
-                    // Don't continue - let the current key be processed normally
-                    // Actually, for goto prompt we enter command mode, so we should continue
+                    continue;
+                }
+
+                // Handle 'dd' sequence (delete row)
+                if key.code == KeyCode::Char('d') && key.modifiers.is_empty() {
+                    if app.pending_d {
+                        app.pending_d = false;
+                        app.delete_row();
+                        continue;
+                    } else {
+                        app.pending_d = true;
+                        app.pending_g = false;
+                        app.pending_y = false;
+                        continue;
+                    }
+                } else if app.pending_d {
+                    // 'd' followed by something else - clear pending
+                    app.pending_d = false;
+                    // Let the key be processed normally
+                }
+
+                // Handle 'yy' sequence (yank row)
+                if key.code == KeyCode::Char('y') && key.modifiers.is_empty() {
+                    if app.pending_y {
+                        app.pending_y = false;
+                        app.yank_row();
+                        continue;
+                    } else {
+                        app.pending_y = true;
+                        app.pending_g = false;
+                        app.pending_d = false;
+                        continue;
+                    }
+                } else if app.pending_y {
+                    // 'y' pressed but not followed by 'y' - do normal yank
+                    app.pending_y = false;
+                    app.yank();
                     continue;
                 }
             }

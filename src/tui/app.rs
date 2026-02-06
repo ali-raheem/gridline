@@ -114,6 +114,12 @@ pub struct App {
 
     /// Pending count for Vim-style number prefixes (e.g., 5j)
     pub pending_count: Option<usize>,
+
+    /// Pending 'd' key for Vim dd command
+    pub pending_d: bool,
+
+    /// Pending 'y' key for Vim yy command
+    pub pending_y: bool,
 }
 
 impl App {
@@ -147,6 +153,8 @@ impl App {
             status_message: String::new(),
             pending_g: false,
             pending_count: None,
+            pending_d: false,
+            pending_y: false,
         }
     }
 
@@ -302,6 +310,47 @@ impl App {
         let at_row = self.cursor_row;
         self.core.delete_row(at_row);
         self.status_message = format!("Deleted row {}", at_row + 1);
+    }
+
+    /// Yank the entire current row
+    pub fn yank_row(&mut self) {
+        let row = self.cursor_row;
+        let mut cells = Vec::new();
+
+        // Find the last column with data in this row
+        let mut last_col = 0usize;
+        for entry in self.core.grid.iter() {
+            if entry.key().row == row && entry.key().col > last_col {
+                last_col = entry.key().col;
+            }
+        }
+
+        // Yank all cells from column 0 to last_col
+        for col in 0..=last_col {
+            let cell_ref = CellRef::new(col, row);
+            if let Some(cell) = self.core.grid.get(&cell_ref) {
+                cells.push((col, 0, cell.clone()));
+            } else if self.core.spill_sources.contains_key(&cell_ref)
+                || self.core.value_cache.contains_key(&cell_ref)
+            {
+                let display = self.core.get_cell_display(&cell_ref);
+                if !display.is_empty() {
+                    let cell = Cell::from_input(&display);
+                    cells.push((col, 0, cell));
+                }
+            }
+        }
+
+        let width = last_col + 1;
+        self.copy_to_system_clipboard(&cells, width, 1);
+        self.clipboard = Some(Clipboard {
+            cells,
+            source_col: 0,
+            source_row: row,
+            width,
+            height: 1,
+        });
+        self.status_message = format!("Yanked row {}", row + 1);
     }
 
     /// Insert a column left of the cursor position
