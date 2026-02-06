@@ -79,6 +79,11 @@ pub const RANGE_BUILTINS: &[RangeBuiltin] = &[
         description: "Count cells where predicate is true",
     },
     RangeBuiltin {
+        sheet_name: "PRODUCT",
+        rhai_name: "PRODUCT_RANGE",
+        description: "Product of numeric values in a cell range",
+    },
+    RangeBuiltin {
         sheet_name: "MEDIAN",
         rhai_name: "MEDIAN_RANGE",
         description: "Median of numeric values in a cell range",
@@ -920,6 +925,27 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
         },
     );
 
+    // ISNUMBER(val): true if value is numeric
+    engine.register_fn("ISNUMBER", |val: Dynamic| -> bool {
+        val.is_float() || val.is_int()
+    });
+
+    // ISTEXT(val): true if value is a string
+    engine.register_fn("ISTEXT", |val: Dynamic| -> bool {
+        val.is_string()
+    });
+
+    // ISEMPTY(val): true if value is empty string or unit
+    engine.register_fn("ISEMPTY", |val: Dynamic| -> bool {
+        if val.is_unit() {
+            return true;
+        }
+        if let Ok(s) = val.into_string() {
+            return s.is_empty();
+        }
+        false
+    });
+
     // ROUND(n, decimals): round to N decimal places
     engine.register_fn(
         "ROUND",
@@ -1027,6 +1053,28 @@ pub fn register_builtins(engine: &mut Engine, grid: Grid, value_cache: ValueCach
                 }
             }
             Ok(count)
+        },
+    );
+
+    // PRODUCT_RANGE(c1, r1, c2, r2): product of numeric values in range
+    let grid_product = grid.clone();
+    let cache_product = value_cache.clone();
+    engine.register_fn(
+        "PRODUCT_RANGE",
+        move |ctx: NativeCallContext,
+              c1: i64,
+              r1: i64,
+              c2: i64,
+              r2: i64|
+              -> Result<f64, Box<EvalAltResult>> {
+            let (min_row, max_row, min_col, max_col) = normalize_range_coords(c1, r1, c2, r2)?;
+            let mut product = 1.0;
+            for row in min_row..=max_row {
+                for col in min_col..=max_col {
+                    product *= cell_value_or_zero(&ctx, &grid_product, &cache_product, col, row);
+                }
+            }
+            Ok(product)
         },
     );
 
@@ -2257,5 +2305,52 @@ mod tests {
         let result: Result<Dynamic, _> =
             engine.eval(r#"LOOKUP_IMPL("x", 0, 0, 0, 2, 1, 0, 1, 1)"#);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_isnumber() {
+        let engine = make_engine();
+        assert_eq!(engine.eval::<bool>("ISNUMBER(42.0)").unwrap(), true);
+        assert_eq!(engine.eval::<bool>("ISNUMBER(42)").unwrap(), true);
+        assert_eq!(engine.eval::<bool>(r#"ISNUMBER("hello")"#).unwrap(), false);
+    }
+
+    #[test]
+    fn test_istext() {
+        let engine = make_engine();
+        assert_eq!(engine.eval::<bool>(r#"ISTEXT("hello")"#).unwrap(), true);
+        assert_eq!(engine.eval::<bool>("ISTEXT(42)").unwrap(), false);
+        assert_eq!(engine.eval::<bool>("ISTEXT(3.14)").unwrap(), false);
+    }
+
+    #[test]
+    fn test_isempty() {
+        let engine = make_engine();
+        assert_eq!(engine.eval::<bool>(r#"ISEMPTY("")"#).unwrap(), true);
+        assert_eq!(engine.eval::<bool>("ISEMPTY(())").unwrap(), true);
+        assert_eq!(engine.eval::<bool>(r#"ISEMPTY("hello")"#).unwrap(), false);
+        assert_eq!(engine.eval::<bool>("ISEMPTY(0)").unwrap(), false);
+    }
+
+    #[test]
+    fn test_product() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(2.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(3.0));
+        grid.insert(CellRef::new(0, 2), Cell::new_number(4.0));
+        let engine = make_engine_with_grid(grid);
+        let result: f64 = engine.eval("PRODUCT_RANGE(0, 0, 0, 2)").unwrap();
+        assert_eq!(result, 24.0);
+    }
+
+    #[test]
+    fn test_product_with_zero() {
+        let grid: Grid = std::sync::Arc::new(DashMap::new());
+        grid.insert(CellRef::new(0, 0), Cell::new_number(5.0));
+        grid.insert(CellRef::new(0, 1), Cell::new_number(0.0));
+        grid.insert(CellRef::new(0, 2), Cell::new_number(3.0));
+        let engine = make_engine_with_grid(grid);
+        let result: f64 = engine.eval("PRODUCT_RANGE(0, 0, 0, 2)").unwrap();
+        assert_eq!(result, 0.0);
     }
 }
