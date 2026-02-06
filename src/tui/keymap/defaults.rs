@@ -14,6 +14,9 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Down | KeyCode::Char('j') => Some(Action::Move(0, 1)),
             KeyCode::Left | KeyCode::Char('h') => Some(Action::Move(-1, 0)),
             KeyCode::Right | KeyCode::Char('l') => Some(Action::Move(1, 0)),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => Some(Action::Move(-1, 0)),
+            KeyCode::Tab => Some(Action::Move(1, 0)),
+            KeyCode::BackTab => Some(Action::Move(-1, 0)),
 
             KeyCode::PageUp => Some(Action::Page(-1)),
             KeyCode::PageDown => Some(Action::Page(1)),
@@ -84,6 +87,11 @@ pub(crate) fn translate_emacs(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::PageDown => Some(Action::Page(1)),
             KeyCode::Char('v') if ctrl => Some(Action::Page(1)),
             KeyCode::Char('v') if alt => Some(Action::Page(-1)),
+
+            // Tab navigation
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => Some(Action::Move(-1, 0)),
+            KeyCode::Tab => Some(Action::Move(1, 0)),
+            KeyCode::BackTab => Some(Action::Move(-1, 0)),
 
             // Home/End column
             KeyCode::Char('a') if ctrl => Some(Action::HomeCol),
