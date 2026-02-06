@@ -30,6 +30,7 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             }
             KeyCode::Char('I') => Some(Action::InsertAtStart),
             KeyCode::Char('x') | KeyCode::Delete => Some(Action::ClearCell),
+            KeyCode::Char('S') => Some(Action::ChangeCell),
             KeyCode::Char(':') => Some(Action::EnterCommand),
             KeyCode::Char('v') => Some(Action::EnterVisual),
             KeyCode::Char('y') => Some(Action::Yank),

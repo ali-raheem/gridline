@@ -114,6 +114,12 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
         Action::Undo => app.undo(),
         Action::Redo => app.redo(),
         Action::ClearCell => app.clear_current_cell(),
+        Action::ChangeCell => {
+            app.clear_current_cell();
+            app.mode = Mode::Edit;
+            app.edit_buffer.clear();
+            app.edit_cursor = 0;
+        }
         Action::OpenPlot => app.open_plot_modal_at_cursor(),
 
         Action::Move(dx, dy) => app.move_cursor(dx, dy),

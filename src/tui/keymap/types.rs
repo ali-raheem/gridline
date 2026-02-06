@@ -175,6 +175,8 @@ pub enum Action {
     Redo,
     /// Clear the current cell.
     ClearCell,
+    /// Clear cell and enter edit mode (Vim "change").
+    ChangeCell,
     /// Open plot modal for current cell.
     OpenPlot,
 

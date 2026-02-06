@@ -120,6 +120,9 @@ pub struct App {
 
     /// Pending 'y' key for Vim yy command
     pub pending_y: bool,
+
+    /// Pending 'c' key for Vim cc command
+    pub pending_c: bool,
 }
 
 impl App {
@@ -155,6 +158,7 @@ impl App {
             pending_count: None,
             pending_d: false,
             pending_y: false,
+            pending_c: false,
         }
     }
 

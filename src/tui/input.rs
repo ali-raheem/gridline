@@ -138,6 +138,7 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                         app.pending_y = true;
                         app.pending_g = false;
                         app.pending_d = false;
+                        app.pending_c = false;
                         continue;
                     }
                 } else if app.pending_y {
@@ -145,6 +146,26 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                     app.pending_y = false;
                     app.yank();
                     continue;
+                }
+
+                // Handle 'cc' sequence (change cell) and 'S' shortcut
+                if key.code == KeyCode::Char('c') && key.modifiers.is_empty() {
+                    if app.pending_c {
+                        app.pending_c = false;
+                        if apply_action(app, Action::ChangeCell, key) == ApplyResult::Quit {
+                            return Ok(());
+                        }
+                        continue;
+                    } else {
+                        app.pending_c = true;
+                        app.pending_g = false;
+                        app.pending_d = false;
+                        app.pending_y = false;
+                        continue;
+                    }
+                } else if app.pending_c {
+                    // 'c' followed by something else - clear pending
+                    app.pending_c = false;
                 }
             }
 
