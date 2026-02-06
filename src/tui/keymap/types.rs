@@ -17,7 +17,6 @@ pub enum Keymap {
 }
 
 impl Keymap {
-    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         match self {
             Keymap::Vim => "vim",
@@ -29,7 +28,7 @@ impl Keymap {
     pub fn status_hint(&self) -> String {
         match self {
             Keymap::Vim => {
-                "hjkl:move  i:edit  v:visual  y:yank  p:paste  P:plot  +/-:colwidth  G:last  :w:save  :q:quit".to_string()
+                "hjkl:move  i:edit  v:visual  y:yank  p:paste  P:plot  gg/G:first/last  :w:save  :q:quit".to_string()
             }
             Keymap::Emacs => {
                 "C-n/p/f/b:move  Enter:edit  M-x:cmd  C-s:save  M-w:copy  C-y:paste  C-SPC:mark  C-g:cancel  M-p:plot".to_string()
@@ -187,6 +186,8 @@ pub enum Action {
     EndCol,
     /// Jump to last row with data.
     GotoLast,
+    /// Jump to first cell (A1).
+    GotoFirst,
     /// Open the goto cell prompt.
     OpenGotoPrompt,
 

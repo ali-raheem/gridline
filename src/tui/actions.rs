@@ -129,6 +129,7 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
             app.update_viewport();
         }
         Action::GotoLast => app.goto_last(),
+        Action::GotoFirst => app.goto_first(),
         Action::OpenGotoPrompt => {
             app.mode = Mode::Command;
             app.command_buffer = "goto ".to_string();

@@ -30,7 +30,7 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('+') | KeyCode::Char('>') => Some(Action::IncColWidth),
             KeyCode::Char('-') | KeyCode::Char('<') => Some(Action::DecColWidth),
             KeyCode::Char('G') => Some(Action::GotoLast),
-            KeyCode::Char('g') => Some(Action::OpenGotoPrompt),
+            // 'g' is handled specially in input.rs for gg sequence
             _ => None,
         },
 

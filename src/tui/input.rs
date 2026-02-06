@@ -4,7 +4,7 @@ use std::io;
 
 use super::actions::{ApplyResult, apply_action, handle_command_text, handle_edit_text};
 use super::app::{App, Mode};
-use super::keymap::translate;
+use super::keymap::{Action, Keymap, translate};
 use super::ui;
 
 pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
@@ -61,6 +61,33 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                     _ => {}
                 }
                 continue;
+            }
+
+            // Handle Vim 'gg' sequence (go to first cell)
+            if matches!(app.keymap, Keymap::Vim) && app.mode == Mode::Normal {
+                if key.code == KeyCode::Char('g') && key.modifiers.is_empty() {
+                    if app.pending_g {
+                        // Second 'g' pressed -> goto first
+                        app.pending_g = false;
+                        if apply_action(app, Action::GotoFirst, key) == ApplyResult::Quit {
+                            return Ok(());
+                        }
+                        continue;
+                    } else {
+                        // First 'g' pressed -> wait for second key
+                        app.pending_g = true;
+                        continue;
+                    }
+                } else if app.pending_g {
+                    // Different key after 'g' -> open goto prompt and process this key
+                    app.pending_g = false;
+                    if apply_action(app, Action::OpenGotoPrompt, key) == ApplyResult::Quit {
+                        return Ok(());
+                    }
+                    // Don't continue - let the current key be processed normally
+                    // Actually, for goto prompt we enter command mode, so we should continue
+                    continue;
+                }
             }
 
             if let Some(action) = translate(&app.keymap, app.mode, key) {

@@ -25,10 +25,8 @@ pub struct Clipboard {
     /// Source top-left row when yanking.
     pub source_row: usize,
 
-    /// Original selection dimensions (kept for potential future paste-repeat feature)
-    #[allow(dead_code)]
+    /// Original selection dimensions (used for paste-repeat)
     pub width: usize,
-    #[allow(dead_code)]
     pub height: usize,
 }
 
@@ -110,6 +108,9 @@ pub struct App {
 
     /// Status message to display
     pub status_message: String,
+
+    /// Pending 'g' key for Vim gg command
+    pub pending_g: bool,
 }
 
 impl App {
@@ -141,6 +142,7 @@ impl App {
             help_scroll: 0,
             keymap: Keymap::Vim,
             status_message: String::new(),
+            pending_g: false,
         }
     }
 
@@ -197,7 +199,6 @@ impl App {
     }
 
     /// Create a new application with an existing Document instance
-    #[allow(dead_code)]
     pub fn new_with_core(core: Document, keymap: Keymap) -> Self {
         let mut app = Self::new();
         app.core = core;
@@ -519,8 +520,7 @@ impl App {
         }
     }
 
-    /// Go to the first cell (A1) - kept for potential `gg` keybinding
-    #[allow(dead_code)]
+    /// Go to the first cell (A1)
     pub fn goto_first(&mut self) {
         self.cursor_col = 0;
         self.cursor_row = 0;
