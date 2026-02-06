@@ -20,6 +20,8 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
 
             KeyCode::PageUp => Some(Action::Page(-1)),
             KeyCode::PageDown => Some(Action::Page(1)),
+            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::GotoFirst),
+            KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::GotoLast),
             KeyCode::Home => Some(Action::HomeCol),
             KeyCode::End => Some(Action::EndCol),
 
@@ -96,6 +98,8 @@ pub(crate) fn translate_emacs(mode: Mode, key: KeyEvent) -> Option<Action> {
             // Home/End column
             KeyCode::Char('a') if ctrl => Some(Action::HomeCol),
             KeyCode::Char('e') if ctrl => Some(Action::EndCol),
+            KeyCode::Home if ctrl => Some(Action::GotoFirst),
+            KeyCode::End if ctrl => Some(Action::GotoLast),
             KeyCode::Home => Some(Action::HomeCol),
             KeyCode::End => Some(Action::EndCol),
 
