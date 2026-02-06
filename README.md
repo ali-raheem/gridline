@@ -17,6 +17,8 @@ What you get (today):
 - Dependency tracking and recalculation with undo/redo support
 - Load/reload user functions from a `.rhai` file (`-f` at startup, `:source` at runtime)
 - Vim keybindings by default, optional Emacs keymap
+- Regex cell search (`/pattern`, `:find`, `n`/`N`)
+- Vim-style key sequences (`gg`, `dd`, `yy`, `cc`, `zf`/`zF`) with count prefixes (`5j`, `3p`)
 - Custom keymaps via TOML (optional override)
 - Plain text storage format (one cell per line)
 - CSV import/export (`:import`, `:export`)
@@ -217,12 +219,19 @@ Command mode:
 - `:q` - quit (warns if modified)
 - `:q!` - force quit
 - `:wq` - save and quit
+- `:new` - create a new empty document (warns if modified)
+- `:new!` - create a new document and discard unsaved changes
 - `:e <path>` (alias `:open`, `:load`) - open file
 - `:import <file.csv>` - import CSV data at current cursor position
 - `:export <file.csv>` - export grid to CSV format
 
 ### Navigation
 - `:goto A100` (alias `:g A100`) - jump to a cell
+
+### Search
+- `/pattern` - regex search by displayed cell text (case-insensitive by default)
+- `:find <pattern>` (alias `:search <pattern>`) - run regex search
+- `n` / `N` (Vim keymap) - next / previous match
 
 ### Grid Editing
 - `:ir` or `:insertrow` - insert row above current row
@@ -236,6 +245,8 @@ Command mode:
 
 ### Functions and Help
 - `:source <file.rhai>` (alias `:so`) - load functions; `:so` with no args reloads all loaded files
+- `:call <expr>` - execute a Rhai function/script expression in sheet context
+- `:rhai <expr>` - execute an arbitrary Rhai expression in sheet context
 - `:help` or `:h` - open help modal
 
 ## Keymaps 🗺️
@@ -263,11 +274,24 @@ Status bar has an always-on cheat sheet, but the core controls are:
 
 ### Vim Mode (default)
 - `hjkl` - move cursor
+- `[count]hjkl` - move by count (`5j`, `12l`, etc.)
+- `Tab` / `Shift+Tab` - move right / left
+- `g` then any non-`g` key - open `:goto` prompt
+- `gg` / `G` - jump to first cell / last row with data
+- `/` - open regex search prompt
+- `n` / `N` - next / previous search result
 - `i` or `Enter` - edit cell
+- `I` - edit cell with cursor at start
+- `cc` or `S` - clear cell and enter edit mode
+- `x` or `Delete` - clear current cell
 - `Esc` - cancel edit
 - `v` - visual select (start range selection)
+- `V` - select current row
 - `y` - yank (copy)
+- `yy` - yank current row
 - `p` - paste
+- `[count]p` - paste repeatedly
+- `dd` - delete current row
 - `zf` - freeze formula/spill at cursor
 - `zF` - freeze all formulas/spills
 - `u` - undo
@@ -284,11 +308,17 @@ Status bar has an always-on cheat sheet, but the core controls are:
 **Note:** Emacs mode is incomplete and must be enabled with `--keymap emacs`. Some documented keybindings may not work as expected.
 
 - `C-n/p/f/b` - move cursor (next/previous/forward/back)
+- `C-v` / `M-v` - page down / up
+- `C-a` / `C-e` - first / last column
+- `M-g` - open goto prompt
 - `Enter` - edit cell
 - `C-g` - cancel edit
+- `C-d` or `Delete` - clear current cell
 - `C-SPC` - set mark (start visual selection)
 - `M-w` - copy
 - `C-y` - paste
+- `M-s` or `/` - open search prompt
+- `M-r` - next search result
 - `M-p` - open plot modal
 - `M-x` - command mode
 
