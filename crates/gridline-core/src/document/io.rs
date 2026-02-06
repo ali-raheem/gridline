@@ -57,6 +57,18 @@ fn checked_combined_script_size(
 }
 
 impl Document {
+    /// Recompute formula state after custom functions change.
+    ///
+    /// Custom function changes can affect the value of any script cell. Clear
+    /// all formula/spill caches, mark scripts dirty, and eagerly re-evaluate so
+    /// dependent cells do not keep stale `#ERR`/`#NAN!` results.
+    fn refresh_after_functions_change(&mut self) {
+        self.value_cache.clear();
+        self.spill_sources.clear();
+        self.invalidate_script_cache();
+        self.evaluate_all_cells();
+    }
+
     /// Load custom Rhai functions from a file (appends to existing functions).
     /// Returns the path loaded, or an error.
     pub fn load_functions(&mut self, path: &Path) -> Result<PathBuf> {
@@ -94,6 +106,7 @@ impl Document {
         self.custom_functions = Some(new_custom_functions);
         self.engine = engine;
         self.custom_ast = custom_ast;
+        self.refresh_after_functions_change();
 
         Ok(path_buf)
     }
@@ -128,6 +141,7 @@ impl Document {
         self.custom_functions = Some(merged);
         self.engine = engine;
         self.custom_ast = custom_ast;
+        self.refresh_after_functions_change();
 
         Ok(paths.len())
     }
@@ -488,6 +502,91 @@ mod tests {
         doc.set_cell_from_input(CellRef::new(0, 0), "=triple(3)")
             .unwrap();
         assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "9");
+    }
+
+    #[test]
+    fn test_load_functions_recomputes_cached_dependents() {
+        let mut doc = Document::new();
+        doc.set_cell_from_input(CellRef::new(0, 0), "=double(3)")
+            .unwrap();
+        doc.set_cell_from_input(CellRef::new(1, 0), "=A1/2")
+            .unwrap();
+
+        // Evaluate once before functions are loaded, which caches stale #NAN! in B1.
+        let before = doc.get_cell_display(&CellRef::new(1, 0));
+        assert!(before.starts_with("#NAN"));
+
+        let path = std::env::temp_dir().join(format!(
+            "gridline_recompute_funcs_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn double(x) {{ x * 2 }}").unwrap();
+        }
+
+        doc.load_functions(&path).unwrap();
+
+        assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "6");
+        assert_eq!(doc.get_cell_display(&CellRef::new(1, 0)), "3");
+    }
+
+    #[test]
+    fn test_reload_functions_recomputes_cached_dependents() {
+        let mut doc = Document::new();
+
+        let path = std::env::temp_dir().join(format!(
+            "gridline_reload_recompute_funcs_{}_{}_{:?}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            std::thread::current().id(),
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn double(x) {{ x * 2 }}").unwrap();
+        }
+        doc.load_functions(&path).unwrap();
+
+        doc.set_cell_from_input(CellRef::new(0, 0), "=double(3)")
+            .unwrap();
+        doc.set_cell_from_input(CellRef::new(1, 0), "=A1/2")
+            .unwrap();
+        // Prime A1 so B1 reads from value_cache instead of fallback script eval.
+        assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "6");
+        assert_eq!(doc.get_cell_display(&CellRef::new(1, 0)), "3");
+
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            writeln!(f, "fn double(x) {{ x * 4 }}").unwrap();
+        }
+        doc.reload_functions().unwrap();
+
+        assert_eq!(doc.get_cell_display(&CellRef::new(0, 0)), "12");
+        assert_eq!(doc.get_cell_display(&CellRef::new(1, 0)), "6");
     }
 
     #[test]

@@ -201,6 +201,41 @@ fn test_markdown_output_array() {
 }
 
 #[test]
+fn test_markdown_export_file_with_custom_functions_recomputes_dependents() {
+    use std::fs;
+    use std::io::Write;
+
+    let func_path = temp_path("gridline_test_export_funcs.rhai");
+    let grid_path = temp_path("gridline_test_export_input.grid");
+    let output_path = temp_path("gridline_test_export_output.md");
+
+    {
+        let mut file = fs::File::create(&func_path).unwrap();
+        writeln!(file, "fn double(x) {{ x * 2 }}").unwrap();
+    }
+    {
+        let mut file = fs::File::create(&grid_path).unwrap();
+        writeln!(file, "# Gridline Spreadsheet").unwrap();
+        writeln!(file, "A1: =double(3)").unwrap();
+        writeln!(file, "B1: =A1/2").unwrap();
+    }
+
+    let func_str = func_path.to_str().unwrap();
+    let grid_str = grid_path.to_str().unwrap();
+    let output_str = output_path.to_str().unwrap();
+
+    let (_, _, code) = run_command(&[grid_str, "-f", func_str, "-o", output_str]);
+    assert_eq!(code, 0);
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("| 1 | 6 | 3 |"));
+
+    fs::remove_file(func_path).ok();
+    fs::remove_file(grid_path).ok();
+    fs::remove_file(output_path).ok();
+}
+
+#[test]
 fn test_empty_result() {
     let (stdout, _, code) = run_command(&["-c", "\"\""]);
     assert_eq!(stdout.trim(), "");
