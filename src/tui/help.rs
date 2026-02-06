@@ -118,6 +118,7 @@ pub fn get_commands_help() -> Vec<String> {
         "  :deletecol     Alias for :dc",
         "",
         "Display",
+        "  :set colwidth <n>  Set default column width",
         "  :colwidth <n>  Set current column width",
         "  :cw [col] <n>  Set column width (e.g. :cw A 15)",
         "",

@@ -721,6 +721,24 @@ impl App {
                         "Usage: :source <file.rhai> (or :so to reload current)".to_string();
                 }
             }
+            "set" => {
+                if let Some(args) = args {
+                    let parts: Vec<&str> = args.split_whitespace().collect();
+                    if parts.len() == 2 && parts[0] == "colwidth" {
+                        if let Ok(w) = parts[1].parse::<usize>() {
+                            self.col_width = w.clamp(4, 50);
+                            self.status_message =
+                                format!("Default column width set to {}", self.col_width);
+                        } else {
+                            self.status_message = "Invalid width".to_string();
+                        }
+                    } else {
+                        self.status_message = "Usage: :set colwidth <n>".to_string();
+                    }
+                } else {
+                    self.status_message = "Usage: :set colwidth <n>".to_string();
+                }
+            }
             "colwidth" | "cw" => {
                 if let Some(args) = args {
                     let parts: Vec<&str> = args.split_whitespace().collect();
