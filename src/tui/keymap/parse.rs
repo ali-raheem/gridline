@@ -359,6 +359,8 @@ fn action_from_str(input: &str) -> Option<Action> {
         "redo" => Some(Action::Redo),
         "clear_cell" => Some(Action::ClearCell),
         "open_plot" => Some(Action::OpenPlot),
+        "freeze_cell" => Some(Action::FreezeCell),
+        "freeze_all" => Some(Action::FreezeAll),
         "move_left" => Some(Action::Move(-1, 0)),
         "move_right" => Some(Action::Move(1, 0)),
         "move_up" => Some(Action::Move(0, -1)),
@@ -441,6 +443,12 @@ mod tests {
     fn action_from_str_move_left() {
         let action = action_from_str("move_left").expect("action");
         assert_eq!(action, Action::Move(-1, 0));
+    }
+
+    #[test]
+    fn action_from_str_freeze_actions() {
+        assert_eq!(action_from_str("freeze_cell"), Some(Action::FreezeCell));
+        assert_eq!(action_from_str("freeze_all"), Some(Action::FreezeAll));
     }
 
     #[test]

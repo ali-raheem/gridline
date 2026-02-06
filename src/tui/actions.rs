@@ -122,6 +122,8 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
             app.edit_cursor = 0;
         }
         Action::OpenPlot => app.open_plot_modal_at_cursor(),
+        Action::FreezeCell => app.freeze_current_cell(),
+        Action::FreezeAll => app.freeze_all_cells(),
 
         Action::Move(dx, dy) => app.move_cursor(dx, dy),
         Action::Page(dir) => {

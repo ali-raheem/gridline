@@ -1,7 +1,8 @@
 use super::{Document, UndoAction, UndoEntry};
 use crate::error::{GridlineError, Result};
 use gridline_engine::engine::{
-    Cell, CellRef, CellType, ShiftOperation, offset_formula_references, shift_formula_references,
+    Cell, CellRef, CellType, Dynamic, ShiftOperation, format_dynamic, offset_formula_references,
+    shift_formula_references,
 };
 
 /// Dimension for row/column operations
@@ -27,6 +28,30 @@ impl Dimension {
             Dimension::Column => CellRef::new(new_coord, cell_ref.row),
         }
     }
+}
+
+/// Freeze a computed value into a concrete non-formula cell.
+///
+/// Numeric results are frozen using their formatted display value, so what gets frozen
+/// matches what users currently see in the grid.
+fn frozen_cell_from_dynamic(value: &Dynamic) -> Cell {
+    if value.is_unit() {
+        return Cell::new_empty();
+    }
+    if let Ok(text) = value.clone().into_string() {
+        return Cell::new_text(&text);
+    }
+    if let Ok(boolean) = value.as_bool() {
+        return Cell::new_text(if boolean { "TRUE" } else { "FALSE" });
+    }
+    if value.as_float().is_ok() || value.as_int().is_ok() {
+        let display = format_dynamic(value);
+        if let Ok(parsed) = display.parse::<f64>() {
+            return Cell::new_number(parsed);
+        }
+        return Cell::new_text(&display);
+    }
+    Cell::new_text(&format_dynamic(value))
 }
 
 impl Document {
@@ -599,6 +624,109 @@ impl Document {
 
         Ok(count)
     }
+
+    /// Freeze a formula cell or spill output at `cell_ref` to its current value.
+    ///
+    /// Returns `1` if a cell was frozen, otherwise `0`.
+    pub fn freeze_cell(&mut self, cell_ref: &CellRef) -> usize {
+        let is_formula_source = self
+            .grid
+            .get(cell_ref)
+            .is_some_and(|cell| matches!(cell.contents, CellType::Script(_)));
+        let is_spill_output = self.spill_sources.contains_key(cell_ref);
+        if !is_formula_source && !is_spill_output {
+            return 0;
+        }
+        self.freeze_targets(vec![cell_ref.clone()])
+    }
+
+    /// Freeze all formula cells (and their spill outputs) to current values.
+    ///
+    /// Returns the number of cells that were frozen.
+    pub fn freeze_all(&mut self) -> usize {
+        let mut formula_sources: Vec<CellRef> = self
+            .grid
+            .iter()
+            .filter(|entry| matches!(entry.value().contents, CellType::Script(_)))
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        if formula_sources.is_empty() && self.spill_sources.is_empty() {
+            return 0;
+        }
+
+        formula_sources.sort_by(|a, b| a.row.cmp(&b.row).then(a.col.cmp(&b.col)));
+        for cell_ref in &formula_sources {
+            let _ = self.get_cell_display(cell_ref);
+        }
+
+        let mut targets = formula_sources;
+        targets.extend(self.spill_sources.keys().cloned());
+        self.freeze_targets(targets)
+    }
+
+    fn freeze_targets(&mut self, targets: Vec<CellRef>) -> usize {
+        if targets.is_empty() {
+            return 0;
+        }
+
+        let mut unique_targets = Vec::with_capacity(targets.len());
+        let mut seen = std::collections::HashSet::with_capacity(targets.len());
+        for cell_ref in targets {
+            if seen.insert(cell_ref.clone()) {
+                unique_targets.push(cell_ref);
+            }
+        }
+        unique_targets.sort_by(|a, b| a.row.cmp(&b.row).then(a.col.cmp(&b.col)));
+
+        let mut snapshots: Vec<(CellRef, Cell)> = Vec::with_capacity(unique_targets.len());
+        for cell_ref in unique_targets {
+            let display = self.get_cell_display(&cell_ref);
+            let frozen_cell = if let Some(value) = self.value_cache.get(&cell_ref) {
+                frozen_cell_from_dynamic(&value)
+            } else if display.is_empty() {
+                Cell::new_empty()
+            } else {
+                Cell::new_text(&display)
+            };
+            snapshots.push((cell_ref, frozen_cell));
+        }
+
+        if snapshots.is_empty() {
+            return 0;
+        }
+
+        let undo_actions: Vec<UndoAction> = snapshots
+            .iter()
+            .map(|(cell_ref, new_cell)| UndoAction {
+                cell_ref: cell_ref.clone(),
+                old_cell: self.grid.get(cell_ref).map(|r| r.clone()),
+                new_cell: Some(new_cell.clone()),
+            })
+            .collect();
+        self.push_undo_batch(undo_actions);
+
+        let mut additionally_dirty = Vec::new();
+        let mut affected_cells = Vec::with_capacity(snapshots.len());
+        for (cell_ref, new_cell) in snapshots {
+            if let Some(spill_source) = self.prepare_overwrite(&cell_ref) {
+                additionally_dirty.push(spill_source);
+            }
+            self.grid.insert(cell_ref.clone(), new_cell);
+            affected_cells.push(cell_ref);
+        }
+
+        self.modified = true;
+        self.rebuild_dependents();
+        for cell_ref in &affected_cells {
+            self.mark_dependents_dirty(cell_ref);
+        }
+        for spill_source in additionally_dirty {
+            self.mark_dependents_dirty(&spill_source);
+        }
+
+        affected_cells.len()
+    }
 }
 
 #[cfg(test)]
@@ -760,6 +888,60 @@ mod tests {
         assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "99");
         assert!(!core.spill_sources.contains_key(&CellRef::new(0, 1)));
         assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "");
+    }
+
+    #[test]
+    fn test_freeze_cell_replaces_formula_with_value() {
+        let mut core = Document::new();
+        let cell = CellRef::new(0, 0);
+        core.set_cell_from_input(cell.clone(), "=1+5").unwrap();
+
+        let frozen = core.freeze_cell(&cell);
+
+        assert_eq!(frozen, 1);
+        assert_eq!(core.get_cell_display(&cell), "6");
+        let contents = &core.grid.get(&cell).unwrap().contents;
+        assert!(matches!(contents, CellType::Number(n) if (*n - 6.0).abs() < 0.0001));
+    }
+
+    #[test]
+    fn test_freeze_cell_preserves_string_values_starting_with_equals() {
+        let mut core = Document::new();
+        let cell = CellRef::new(0, 0);
+        core.set_cell_from_input(cell.clone(), "=\"=A1+1\"")
+            .unwrap();
+
+        let frozen = core.freeze_cell(&cell);
+
+        assert_eq!(frozen, 1);
+        let contents = &core.grid.get(&cell).unwrap().contents;
+        assert!(matches!(contents, CellType::Text(s) if s == "=A1+1"));
+    }
+
+    #[test]
+    fn test_freeze_all_materializes_formulas_and_spills() {
+        let mut core = Document::new();
+        core.set_cell_from_input(CellRef::new(0, 0), "=SPILL(1..=3)")
+            .unwrap();
+        core.set_cell_from_input(CellRef::new(1, 0), "=A1*10")
+            .unwrap();
+
+        let frozen = core.freeze_all();
+
+        assert_eq!(frozen, 4);
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 0)), "1");
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 1)), "2");
+        assert_eq!(core.get_cell_display(&CellRef::new(0, 2)), "3");
+        assert_eq!(core.get_cell_display(&CellRef::new(1, 0)), "10");
+
+        for entry in core.grid.iter() {
+            assert!(
+                !matches!(entry.value().contents, CellType::Script(_)),
+                "formula left in {}",
+                entry.key()
+            );
+        }
+        assert!(core.spill_sources.is_empty());
     }
 
     #[test]

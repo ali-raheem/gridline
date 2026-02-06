@@ -127,6 +127,8 @@ pub struct App {
 
     /// Pending 'c' key for Vim cc command
     pub pending_c: bool,
+    /// Pending 'z' key for Vim zf/zF commands
+    pub pending_z: bool,
 }
 
 impl App {
@@ -164,6 +166,7 @@ impl App {
             pending_d: false,
             pending_y: false,
             pending_c: false,
+            pending_z: false,
         }
     }
 
@@ -646,6 +649,27 @@ impl App {
         }
     }
 
+    /// Freeze the formula/spill value at the current cursor into a concrete value.
+    pub fn freeze_current_cell(&mut self) {
+        let cell_ref = self.current_cell_ref();
+        let frozen = self.core.freeze_cell(&cell_ref);
+        if frozen == 0 {
+            self.status_message = format!("No formula to freeze at {}", cell_ref);
+        } else {
+            self.status_message = format!("Froze {}", cell_ref);
+        }
+    }
+
+    /// Freeze every formula (and spill output) in the sheet to current values.
+    pub fn freeze_all_cells(&mut self) {
+        let frozen = self.core.freeze_all();
+        if frozen == 0 {
+            self.status_message = "No formulas to freeze".to_string();
+        } else {
+            self.status_message = format!("Froze {} cells", frozen);
+        }
+    }
+
     /// Get width for a specific column
     pub fn get_column_width(&self, col: usize) -> usize {
         *self.column_widths.get(&col).unwrap_or(&self.col_width)
@@ -856,6 +880,12 @@ impl App {
                     self.status_message = "Usage: :export <file.csv>".to_string();
                 }
             }
+            "freeze" | "fr" => {
+                self.freeze_current_cell();
+            }
+            "freezeall" | "fa" => {
+                self.freeze_all_cells();
+            }
             "ir" | "insertrow" => {
                 self.insert_row();
             }
@@ -1017,6 +1047,44 @@ mod tests {
             cell.contents,
             CellType::Number(n) if (n - 42.0).abs() < 0.001
         ));
+    }
+
+    #[test]
+    fn test_freeze_command_replaces_formula_at_cursor() {
+        let mut app = App::new();
+        app.core
+            .set_cell_from_input(CellRef::new(0, 0), "=1+5")
+            .unwrap();
+        app.mode = Mode::Command;
+        app.command_buffer = "freeze".to_string();
+
+        let should_quit = app.execute_command();
+
+        assert!(!should_quit);
+        let frozen = app.core.grid.get(&CellRef::new(0, 0)).unwrap();
+        assert!(matches!(
+            frozen.contents,
+            CellType::Number(n) if (n - 6.0).abs() < 0.0001
+        ));
+        assert_eq!(app.status_message, "Froze A1");
+    }
+
+    #[test]
+    fn test_freezeall_command_materializes_spill_outputs() {
+        let mut app = App::new();
+        app.core
+            .set_cell_from_input(CellRef::new(0, 0), "=SPILL(1..=3)")
+            .unwrap();
+        app.mode = Mode::Command;
+        app.command_buffer = "freezeall".to_string();
+
+        let should_quit = app.execute_command();
+
+        assert!(!should_quit);
+        assert_eq!(app.core.get_cell_display(&CellRef::new(0, 0)), "1");
+        assert_eq!(app.core.get_cell_display(&CellRef::new(0, 1)), "2");
+        assert_eq!(app.core.get_cell_display(&CellRef::new(0, 2)), "3");
+        assert!(app.core.spill_sources.is_empty());
     }
 
     #[test]

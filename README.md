@@ -229,6 +229,8 @@ Command mode:
 - `:dr` or `:deleterow` - delete current row
 - `:ic` or `:insertcol` - insert column to the left of current column
 - `:dc` or `:deletecol` - delete current column
+- `:freeze` (alias `:fr`) - freeze formula/spill at cursor to current value
+- `:freezeall` (alias `:fa`) - freeze all formulas/spills to current values
 - `:colwidth 15` (alias `:cw`) - set current column width
 - `:colwidth A 15` - set a specific column width
 
@@ -266,6 +268,8 @@ Status bar has an always-on cheat sheet, but the core controls are:
 - `v` - visual select (start range selection)
 - `y` - yank (copy)
 - `p` - paste
+- `zf` - freeze formula/spill at cursor
+- `zF` - freeze all formulas/spills
 - `u` - undo
 - `Ctrl+r` - redo
 - `>` or `+` - increase column width

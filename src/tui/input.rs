@@ -100,6 +100,8 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                         app.pending_g = true;
                         app.pending_d = false;
                         app.pending_y = false;
+                        app.pending_c = false;
+                        app.pending_z = false;
                         continue;
                     }
                 } else if app.pending_g {
@@ -120,6 +122,8 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                         app.pending_d = true;
                         app.pending_g = false;
                         app.pending_y = false;
+                        app.pending_c = false;
+                        app.pending_z = false;
                         continue;
                     }
                 } else if app.pending_d {
@@ -139,6 +143,7 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                         app.pending_g = false;
                         app.pending_d = false;
                         app.pending_c = false;
+                        app.pending_z = false;
                         continue;
                     }
                 } else if app.pending_y {
@@ -161,11 +166,41 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Res
                         app.pending_g = false;
                         app.pending_d = false;
                         app.pending_y = false;
+                        app.pending_z = false;
                         continue;
                     }
                 } else if app.pending_c {
                     // 'c' followed by something else - clear pending
                     app.pending_c = false;
+                }
+
+                // Handle 'zf' / 'zF' sequences (freeze current / freeze all)
+                if key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
+                    app.pending_z = true;
+                    app.pending_g = false;
+                    app.pending_d = false;
+                    app.pending_y = false;
+                    app.pending_c = false;
+                    continue;
+                } else if app.pending_z {
+                    app.pending_z = false;
+                    match key.code {
+                        KeyCode::Char('f') => {
+                            if apply_action(app, Action::FreezeCell, key) == ApplyResult::Quit {
+                                return Ok(());
+                            }
+                            continue;
+                        }
+                        KeyCode::Char('F') => {
+                            if apply_action(app, Action::FreezeAll, key) == ApplyResult::Quit {
+                                return Ok(());
+                            }
+                            continue;
+                        }
+                        _ => {
+                            // Let non-zf keys fall through for normal processing.
+                        }
+                    }
                 }
             }
 
