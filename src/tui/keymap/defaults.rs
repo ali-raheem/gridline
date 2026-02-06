@@ -33,6 +33,7 @@ pub(crate) fn translate_vim(mode: Mode, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('S') => Some(Action::ChangeCell),
             KeyCode::Char(':') => Some(Action::EnterCommand),
             KeyCode::Char('v') => Some(Action::EnterVisual),
+            KeyCode::Char('V') => Some(Action::SelectRow),
             KeyCode::Char('y') => Some(Action::Yank),
             KeyCode::Char('p') => Some(Action::Paste),
             KeyCode::Char('P') => Some(Action::OpenPlot),

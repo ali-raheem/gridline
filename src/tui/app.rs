@@ -445,6 +445,32 @@ impl App {
         self.status_message = "-- VISUAL --".to_string();
     }
 
+    /// Select entire row (Vim visual line mode)
+    pub fn select_row(&mut self) {
+        let row = self.cursor_row;
+
+        // Find the last column with data in this row
+        let mut last_col = 0usize;
+        for entry in self.core.grid.iter() {
+            if entry.key().row == row && entry.key().col > last_col {
+                last_col = entry.key().col;
+            }
+        }
+        // Also check value_cache for spilled values
+        for entry in self.core.value_cache.iter() {
+            if entry.key().row == row && entry.key().col > last_col {
+                last_col = entry.key().col;
+            }
+        }
+
+        // Select from column 0 to last column
+        self.selection_anchor = Some((0, row));
+        self.cursor_col = last_col;
+        self.mode = Mode::Visual;
+        self.update_viewport();
+        self.status_message = "-- VISUAL LINE --".to_string();
+    }
+
     /// Exit visual mode
     pub fn exit_visual_mode(&mut self) {
         self.selection_anchor = None;

@@ -108,6 +108,7 @@ pub fn apply_action(app: &mut App, action: Action, _key: event::KeyEvent) -> App
                 app.enter_visual_mode();
             }
         }
+        Action::SelectRow => app.select_row(),
         Action::ExitVisual => app.exit_visual_mode(),
         Action::Yank => app.yank(),
         Action::Paste => app.paste(),

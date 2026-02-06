@@ -163,6 +163,8 @@ pub enum Action {
     ExecuteCommand,
     /// Enter Visual selection mode.
     EnterVisual,
+    /// Select entire row (visual line mode).
+    SelectRow,
     /// Exit Visual mode without action.
     ExitVisual,
     /// Yank (copy) current cell or selection.
