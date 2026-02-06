@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://www.rust-lang.org/"><img alt="Rust" src="https://img.shields.io/badge/Rust-2024-000000?logo=rust" /></a>
-  <a href="https://crates.io/gridline><img alt="Crates.io" src= "https://img.shields.io/crates/v/gridline" /></a>
+  <a href="https://crates.io/gridline"><img alt="Crates.io" src= "https://img.shields.io/crates/v/gridline" /></a>
   <a href="https://rhai.rs/book/index.html"><img alt="Rhai" src="https://img.shields.io/badge/Rhai-scripting-2b2b2b" /></a>
   <a href="https://github.com/ratatui/ratatui"><img alt="ratatui" src="https://img.shields.io/badge/TUI-ratatui-1f2937" /></a>
 </p>
